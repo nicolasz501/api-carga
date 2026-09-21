@@ -50,3 +50,4 @@ app.include_router(respuestas.router)
 def estado_api(): 
 
     return {"mensaje": "La API de monitoreo se encuentra en línea y funcional"} 
+
