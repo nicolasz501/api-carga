@@ -17,7 +17,7 @@ from app.api import respuestas
 
 app = FastAPI( 
 
-    title="API de Desempeño Estudiantil", 
+    title="API Carga docente", 
 
     description="Backend modular para monitoreo académico usando FastAPI y PostgreSQL puro", 
 
