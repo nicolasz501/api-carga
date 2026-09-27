@@ -1,4 +1,5 @@
 from fastapi import FastAPI 
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import roles
 from app.api import modulos
@@ -16,19 +17,21 @@ from app.api import preguntas
 from app.api import respuestas
 
 app = FastAPI( 
-
     title="API Carga docente", 
-
     description="Backend modular para monitoreo académico usando FastAPI y PostgreSQL puro", 
-
     version="1.0.0" 
-
 ) 
 
- 
+# Configuración de Middleware CORS para permitir peticiones desde SvelteKit / frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Permite conexiones desde cualquier origen (localhost, Render, Vercel, etc.)
+    allow_credentials=True,
+    allow_methods=["*"],  # Permite todos los métodos HTTP (GET, POST, PUT, DELETE, OPTIONS, etc.)
+    allow_headers=["*"],  # Permite todas las cabeceras HTTP
+)
 
 # Conectamos el módulo de rutas a la aplicación principal 
-
 app.include_router(roles.router)
 app.include_router(modulos.router)
 app.include_router(modulos_rol.router)
@@ -43,11 +46,8 @@ app.include_router(horarios.router)
 app.include_router(evaluaciones.router)
 app.include_router(preguntas.router)
 app.include_router(respuestas.router)
- 
+
 
 @app.get("/") 
-
 def estado_api(): 
-
-    return {"mensaje": "La API de monitoreo se encuentra en línea y funcional"} 
-
+    return {"mensaje": "La API de monitoreo se encuentra en línea y funcional"}
