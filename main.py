@@ -1,20 +1,23 @@
+import os
 from fastapi import FastAPI 
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import roles
-from app.api import modulos
-from app.api import modulos_rol
-from app.api import facultades
-from app.api import usuarios
-from app.api import periodos_academicos
-from app.api import programas_academicos
-from app.api import asignaturas
-from app.api import grupos
-from app.api import carga_docente
-from app.api import horarios
-from app.api import evaluaciones
-from app.api import preguntas
-from app.api import respuestas
+from app.api import (
+    roles,
+    modulos,
+    modulos_rol,
+    facultades,
+    usuarios,
+    periodos_academicos,
+    programas_academicos,
+    asignaturas,
+    grupos,
+    carga_docente,
+    horarios,
+    evaluaciones,
+    preguntas,
+    respuestas,
+)
 
 app = FastAPI( 
     title="API Carga docente", 
@@ -22,16 +25,21 @@ app = FastAPI(
     version="1.0.0" 
 ) 
 
-# Configuración de Middleware CORS para permitir peticiones desde SvelteKit / frontend
+# Configuración dinámicas de orígenes para CORS
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS", 
+    "http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Permite conexiones desde cualquier origen (localhost, Render, Vercel, etc.)
+    allow_origins=ALLOWED_ORIGINS if os.getenv("ENVIRONMENT") == "production" else ["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Permite todos los métodos HTTP (GET, POST, PUT, DELETE, OPTIONS, etc.)
-    allow_headers=["*"],  # Permite todas las cabeceras HTTP
+    allow_methods=["*"], 
+    allow_headers=["*"], 
 )
 
-# Conectamos el módulo de rutas a la aplicación principal 
+# Conexión de routers
 app.include_router(roles.router)
 app.include_router(modulos.router)
 app.include_router(modulos_rol.router)
@@ -48,6 +56,10 @@ app.include_router(preguntas.router)
 app.include_router(respuestas.router)
 
 
-@app.get("/") 
+@app.get("/", tags=["Health"]) 
 def estado_api(): 
-    return {"mensaje": "La API de monitoreo se encuentra en línea y funcional"}
+    return {
+        "status": "ok",
+        "mensaje": "La API de monitoreo se encuentra en línea y funcional",
+        "version": app.version
+    }
