@@ -7,6 +7,10 @@ class UsuarioRepository:
     def __init__(self):
         self.db = Database()
 
+    # =========================================================
+    # OBTENER TODOS
+    # =========================================================
+
     def obtener_todos(self):
         try:
             conn = self.db.get_connection()
@@ -19,6 +23,8 @@ class UsuarioRepository:
             """)
 
             usuarios = cursor.fetchall()
+
+            cursor.close()
             conn.close()
 
             return usuarios
@@ -26,6 +32,10 @@ class UsuarioRepository:
         except Exception as e:
             print(f"Error al obtener usuarios: {e}")
             return []
+
+    # =========================================================
+    # OBTENER POR ID
+    # =========================================================
 
     def obtener_por_id(self, usuario_id: int):
         try:
@@ -39,6 +49,8 @@ class UsuarioRepository:
             """, (usuario_id,))
 
             usuario = cursor.fetchone()
+
+            cursor.close()
             conn.close()
 
             return usuario
@@ -46,6 +58,10 @@ class UsuarioRepository:
         except Exception as e:
             print(f"Error al obtener usuario: {e}")
             return None
+
+    # =========================================================
+    # CREAR
+    # =========================================================
 
     def crear(self, usuario: Usuario):
         conn = None
@@ -90,9 +106,12 @@ class UsuarioRepository:
                 usuario.estado
             ))
 
-            nuevo_id = cursor.fetchone()["usuario_id"]
+            resultado = cursor.fetchone()
+            nuevo_id = resultado["usuario_id"]
 
             conn.commit()
+
+            cursor.close()
             conn.close()
 
             return nuevo_id
@@ -105,6 +124,143 @@ class UsuarioRepository:
                 conn.close()
 
             return None
+
+    # =========================================================
+    # LOGIN
+    # =========================================================
+
+    def login(self, correo: str, password: str):
+
+        conn = None
+
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            # -------------------------------------------------
+            # 1. BUSCAR USUARIO + ROL
+            # -------------------------------------------------
+
+            cursor.execute("""
+                SELECT
+                    u.usuario_id,
+                    u.facultades_id,
+                    u.rol_id,
+                    u.primer_nombre,
+                    u.segundo_nombre,
+                    u.primer_apellido,
+                    u.segundo_apellido,
+                    u.correo,
+                    u.codigo_personal,
+                    u.titulo_academico,
+                    u.estado,
+
+                    r.role_id,
+                    r.nombre AS rol_nombre
+
+                FROM usuarios u
+
+                LEFT JOIN roles r
+                    ON r.role_id = u.rol_id
+
+                WHERE LOWER(u.correo) = LOWER(%s)
+                  AND u.contraseña = %s
+                  AND u.estado = TRUE;
+            """, (correo, password))
+
+            usuario = cursor.fetchone()
+
+            # Usuario no encontrado
+            if not usuario:
+                cursor.close()
+                conn.close()
+                return None
+
+            # -------------------------------------------------
+            # 2. OBTENER MÓDULOS DEL ROL
+            # -------------------------------------------------
+
+            cursor.execute("""
+                SELECT
+                    m.module_id,
+                    m.nombre
+
+                FROM modulos_rol mr
+
+                INNER JOIN modulos m
+                    ON m.module_id = mr.module_id
+
+                WHERE mr.role_id = %s
+
+                ORDER BY m.module_id ASC;
+            """, (usuario["rol_id"],))
+
+            modulos = cursor.fetchall()
+
+            # -------------------------------------------------
+            # 3. CONVERTIR MÓDULOS
+            # -------------------------------------------------
+
+            lista_modulos = [
+                modulo["nombre"]
+                for modulo in modulos
+            ]
+
+            # -------------------------------------------------
+            # 4. ARMAR USUARIO
+            # -------------------------------------------------
+
+            usuario_data = {
+                "usuario_id": usuario["usuario_id"],
+                "facultades_id": usuario["facultades_id"],
+                "rol_id": usuario["rol_id"],
+                "primer_nombre": usuario["primer_nombre"],
+                "segundo_nombre": usuario["segundo_nombre"],
+                "primer_apellido": usuario["primer_apellido"],
+                "segundo_apellido": usuario["segundo_apellido"],
+                "correo": usuario["correo"],
+                "codigo_personal": usuario["codigo_personal"],
+                "titulo_academico": usuario["titulo_academico"],
+                "estado": usuario["estado"]
+            }
+
+            # -------------------------------------------------
+            # 5. ARMAR ROL
+            # -------------------------------------------------
+
+            rol_data = {
+                "role_id": usuario["role_id"],
+                "nombre": usuario["rol_nombre"]
+            }
+
+            # -------------------------------------------------
+            # 6. RESPUESTA FINAL
+            # -------------------------------------------------
+
+            resultado = {
+                "usuario": usuario_data,
+                "rol": rol_data,
+                "modulos": lista_modulos
+            }
+
+            cursor.close()
+            conn.close()
+
+            return resultado
+
+        except Exception as e:
+
+            print(f"Error en login: {e}")
+
+            if conn:
+                conn.rollback()
+                conn.close()
+
+            return None
+
+    # =========================================================
+    # ELIMINAR
+    # =========================================================
 
     def eliminar(self, usuario_id: int):
         conn = None
@@ -122,6 +278,8 @@ class UsuarioRepository:
             eliminado = cursor.fetchone()
 
             conn.commit()
+
+            cursor.close()
             conn.close()
 
             return eliminado is not None
@@ -134,6 +292,10 @@ class UsuarioRepository:
                 conn.close()
 
             return False
+
+    # =========================================================
+    # ACTUALIZAR
+    # =========================================================
 
     def actualizar(self, usuario_id: int, usuario: Usuario):
         conn = None
@@ -177,6 +339,8 @@ class UsuarioRepository:
             actualizado = cursor.fetchone()
 
             conn.commit()
+
+            cursor.close()
             conn.close()
 
             return actualizado is not None
