@@ -1,5 +1,6 @@
 from app.core.database import Database
 from app.models.Usuario import Usuario
+import bcrypt
 
 
 class UsuarioRepository:
@@ -12,6 +13,8 @@ class UsuarioRepository:
     # =========================================================
 
     def obtener_todos(self):
+        conn = None
+
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
@@ -31,6 +34,10 @@ class UsuarioRepository:
 
         except Exception as e:
             print(f"Error al obtener usuarios: {e}")
+
+            if conn:
+                conn.close()
+
             return []
 
     # =========================================================
@@ -38,6 +45,8 @@ class UsuarioRepository:
     # =========================================================
 
     def obtener_por_id(self, usuario_id: int):
+        conn = None
+
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
@@ -57,6 +66,10 @@ class UsuarioRepository:
 
         except Exception as e:
             print(f"Error al obtener usuario: {e}")
+
+            if conn:
+                conn.close()
+
             return None
 
     # =========================================================
@@ -69,6 +82,12 @@ class UsuarioRepository:
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
+
+            # Encriptar contraseña antes de guardarla
+            contraseña_hash = bcrypt.hashpw(
+                usuario.contraseña.encode("utf-8"),
+                bcrypt.gensalt()
+            ).decode("utf-8")
 
             cursor.execute("""
                 INSERT INTO usuarios
@@ -99,7 +118,7 @@ class UsuarioRepository:
                 usuario.primer_apellido,
                 usuario.segundo_apellido,
                 usuario.correo,
-                usuario.contraseña,
+                contraseña_hash,
                 usuario.numero_documento,
                 usuario.codigo_personal,
                 usuario.titulo_academico,
@@ -130,7 +149,6 @@ class UsuarioRepository:
     # =========================================================
 
     def login(self, correo: str, password: str):
-
         conn = None
 
         try:
@@ -138,7 +156,7 @@ class UsuarioRepository:
             cursor = conn.cursor()
 
             # -------------------------------------------------
-            # 1. BUSCAR USUARIO + ROL
+            # 1. BUSCAR USUARIO POR CORREO
             # -------------------------------------------------
 
             cursor.execute("""
@@ -151,55 +169,67 @@ class UsuarioRepository:
                     u.primer_apellido,
                     u.segundo_apellido,
                     u.correo,
+                    u.contraseña,
                     u.codigo_personal,
                     u.titulo_academico,
                     u.estado,
-
                     r.role_id,
                     r.nombre AS rol_nombre
-
                 FROM usuarios u
-
                 LEFT JOIN roles r
                     ON r.role_id = u.rol_id
-
                 WHERE LOWER(u.correo) = LOWER(%s)
-                  AND u.contraseña = %s
                   AND u.estado = TRUE;
-            """, (correo, password))
+            """, (correo,))
 
             usuario = cursor.fetchone()
 
-            # Usuario no encontrado
             if not usuario:
                 cursor.close()
                 conn.close()
                 return None
 
             # -------------------------------------------------
-            # 2. OBTENER MÓDULOS DEL ROL
+            # 2. VERIFICAR CONTRASEÑA
+            # -------------------------------------------------
+
+            contraseña_guardada = usuario["contraseña"]
+
+            contraseña_valida = False
+
+            try:
+                contraseña_valida = bcrypt.checkpw(
+                    password.encode("utf-8"),
+                    contraseña_guardada.encode("utf-8")
+                )
+            except Exception:
+                # Permite temporalmente usuarios que tengan
+                # contraseña en texto plano.
+                contraseña_valida = (
+                    contraseña_guardada == password
+                )
+
+            if not contraseña_valida:
+                cursor.close()
+                conn.close()
+                return None
+
+            # -------------------------------------------------
+            # 3. OBTENER MÓDULOS DEL ROL
             # -------------------------------------------------
 
             cursor.execute("""
                 SELECT
                     m.module_id,
                     m.nombre
-
                 FROM modulos_rol mr
-
                 INNER JOIN modulos m
                     ON m.module_id = mr.module_id
-
                 WHERE mr.role_id = %s
-
                 ORDER BY m.module_id ASC;
             """, (usuario["rol_id"],))
 
             modulos = cursor.fetchall()
-
-            # -------------------------------------------------
-            # 3. CONVERTIR MÓDULOS
-            # -------------------------------------------------
 
             lista_modulos = [
                 modulo["nombre"]
@@ -207,7 +237,7 @@ class UsuarioRepository:
             ]
 
             # -------------------------------------------------
-            # 4. ARMAR USUARIO
+            # 4. DATOS DEL USUARIO
             # -------------------------------------------------
 
             usuario_data = {
@@ -225,7 +255,7 @@ class UsuarioRepository:
             }
 
             # -------------------------------------------------
-            # 5. ARMAR ROL
+            # 5. DATOS DEL ROL
             # -------------------------------------------------
 
             rol_data = {
@@ -249,7 +279,6 @@ class UsuarioRepository:
             return resultado
 
         except Exception as e:
-
             print(f"Error en login: {e}")
 
             if conn:
@@ -304,6 +333,13 @@ class UsuarioRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
+            # Si se envía una nueva contraseña,
+            # se almacena utilizando bcrypt.
+            contraseña_hash = bcrypt.hashpw(
+                usuario.contraseña.encode("utf-8"),
+                bcrypt.gensalt()
+            ).decode("utf-8")
+
             cursor.execute("""
                 UPDATE usuarios
                 SET facultades_id = %s,
@@ -328,7 +364,7 @@ class UsuarioRepository:
                 usuario.primer_apellido,
                 usuario.segundo_apellido,
                 usuario.correo,
-                usuario.contraseña,
+                contraseña_hash,
                 usuario.numero_documento,
                 usuario.codigo_personal,
                 usuario.titulo_academico,
