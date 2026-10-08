@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.grupo import Grupo  # O el archivo donde esté tu Pydantic model
+from app.models.Grupo import Grupo  # O el archivo donde esté tu Pydantic model
 from app.repositories.grupo_repository import GrupoRepository
 
 router = APIRouter(prefix="/grupos", tags=["Gestión de Grupos"])
