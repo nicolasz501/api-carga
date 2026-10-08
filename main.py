@@ -32,24 +32,36 @@ app = FastAPI(
 # CORS
 # =========================================================
 
-# 1. Obtener los orígenes desde la variable de entorno
-# 1. Obtener los orígenes desde la variable de entorno
-origins_env = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173"
-)
+# 1. Lista base de orígenes de desarrollo local y producción
+ALLOWED_ORIGINS_DEFAULT = [
+    "http://localhost:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+]
 
-# 2. Convertir la cadena en lista limpia
-origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+# 2. Obtener la variable de entorno
+origins_env = os.getenv("ALLOWED_ORIGINS", "")
 
-# Agrega la URL de tu frontend desplegado en Render / Vercel o Netlify si aplica
-# origins.append("https://tu-frontend.onrender.com")
+# 3. Construir la lista combinada sin duplicados
+origins_list = ALLOWED_ORIGINS_DEFAULT.copy()
+
+if origins_env:
+    extra_origins = [
+        o.strip().strip("'\"") 
+        for o in origins_env.split(",") 
+        if o.strip()
+    ]
+    origins_list.extend(extra_origins)
+
+# Eliminar duplicados manteniendo el orden
+origins = list(dict.fromkeys(origins_list))
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # <-- Usar la lista explicita en lugar de ["*"]
-    allow_credentials=True,      # <-- Se mantiene en True
-    allow_methods=["*"],
+    allow_origins=origins,       # Lista explícita de orígenes permitidos
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
 
