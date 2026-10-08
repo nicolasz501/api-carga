@@ -1,5 +1,6 @@
 from app.core.database import Database
 from app.models.Usuario import Usuario
+import psycopg2.errors
 import bcrypt
 
 
@@ -83,7 +84,6 @@ class UsuarioRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            # Encriptar contraseña antes de guardarla
             contraseña_hash = bcrypt.hashpw(
                 usuario.contraseña.encode("utf-8"),
                 bcrypt.gensalt()
@@ -92,23 +92,11 @@ class UsuarioRepository:
             cursor.execute("""
                 INSERT INTO usuarios
                 (
-                    facultades_id,
-                    rol_id,
-                    primer_nombre,
-                    segundo_nombre,
-                    primer_apellido,
-                    segundo_apellido,
-                    correo,
-                    contraseña,
-                    numero_documento,
-                    codigo_personal,
-                    titulo_academico,
-                    estado
+                    facultades_id, rol_id, primer_nombre, segundo_nombre,
+                    primer_apellido, segundo_apellido, correo, contraseña,
+                    numero_documento, codigo_personal, titulo_academico, estado
                 )
-                VALUES (
-                    %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s
-                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING usuario_id;
             """, (
                 usuario.facultades_id,
@@ -125,15 +113,19 @@ class UsuarioRepository:
                 usuario.estado
             ))
 
-            resultado = cursor.fetchone()
-            nuevo_id = resultado["usuario_id"]
-
+            nuevo_id = cursor.fetchone()["usuario_id"]
             conn.commit()
 
             cursor.close()
             conn.close()
 
             return nuevo_id
+
+        except psycopg2.errors.UniqueViolation:
+            if conn:
+                conn.rollback()
+                conn.close()
+            raise ValueError("Ya existe un usuario con ese correo, documento o código personal")
 
         except Exception as e:
             print(f"Error al crear usuario: {e}")
@@ -335,3 +327,118 @@ class UsuarioRepository:
                 conn.close()
 
             return None
+
+
+# =========================================================
+    # ACTUALIZAR
+    # =========================================================
+
+    def actualizar(self, usuario_id: int, usuario):
+        conn = None
+
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            # Solo se encripta si llegó una contraseña nueva
+            contraseña_hash = None
+            if usuario.contraseña and usuario.contraseña.strip():
+                contraseña_hash = bcrypt.hashpw(
+                    usuario.contraseña.strip().encode("utf-8"),
+                    bcrypt.gensalt()
+                ).decode("utf-8")
+
+            cursor.execute("""
+                UPDATE usuarios
+                SET
+                    rol_id = %s,
+                    primer_nombre = %s,
+                    segundo_nombre = %s,
+                    primer_apellido = %s,
+                    segundo_apellido = %s,
+                    correo = %s,
+                    contraseña = COALESCE(%s, contraseña),
+                    numero_documento = %s,
+                    codigo_personal = %s,
+                    titulo_academico = %s,
+                    estado = %s,
+                    updated_at = NOW()
+                WHERE usuario_id = %s
+                RETURNING usuario_id;
+            """, (
+                usuario.rol_id,
+                usuario.primer_nombre,
+                usuario.segundo_nombre,
+                usuario.primer_apellido,
+                usuario.segundo_apellido,
+                usuario.correo,
+                contraseña_hash,
+                usuario.numero_documento,
+                usuario.codigo_personal,
+                usuario.titulo_academico,
+                usuario.estado,
+                usuario_id
+            ))
+
+            actualizado = cursor.fetchone()
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            return actualizado is not None
+
+        except psycopg2.errors.UniqueViolation:
+            if conn:
+                conn.rollback()
+                conn.close()
+            raise ValueError("Ya existe un usuario con ese correo, documento o código personal")
+
+        except Exception as e:
+            print(f"Error al actualizar usuario: {e}")
+
+            if conn:
+                conn.rollback()
+                conn.close()
+
+            return False
+
+    # =========================================================
+    # ELIMINAR
+    # =========================================================
+
+    def eliminar(self, usuario_id: int):
+        conn = None
+
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                DELETE FROM usuarios
+                WHERE usuario_id = %s
+                RETURNING usuario_id;
+            """, (usuario_id,))
+
+            eliminado = cursor.fetchone()
+            conn.commit()
+
+            cursor.close()
+            conn.close()
+
+            return eliminado is not None
+
+        except psycopg2.errors.ForeignKeyViolation:
+            if conn:
+                conn.rollback()
+                conn.close()
+            raise ValueError("No se puede eliminar: el usuario tiene registros asociados (carga docente, etc.)")
+
+        except Exception as e:
+            print(f"Error al eliminar usuario: {e}")
+
+            if conn:
+                conn.rollback()
+                conn.close()
+
+            return False

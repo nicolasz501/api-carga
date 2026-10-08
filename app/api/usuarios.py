@@ -103,65 +103,38 @@ def obtener_usuario(usuario_id: int):
 
 @router.post("/")
 def crear_usuario(usuario: Usuario):
-
-    nuevo_id = repo.crear(usuario)
+    try:
+        nuevo_id = repo.crear(usuario)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     if not nuevo_id:
+        raise HTTPException(status_code=500, detail="No se pudo crear el usuario")
 
-        raise HTTPException(
-            status_code=500,
-            detail="No se pudo crear el usuario"
-        )
+    return {"mensaje": "Usuario registrado exitosamente", "id": nuevo_id}
 
-    return {
-        "mensaje": "Usuario registrado exitosamente",
-        "id": nuevo_id
-    }
-
-
-# =========================================================
-# ELIMINAR USUARIO
-# =========================================================
 
 @router.delete("/{usuario_id}")
 def eliminar_usuario(usuario_id: int):
-
-    exito = repo.eliminar(usuario_id)
+    try:
+        exito = repo.eliminar(usuario_id)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     if not exito:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
-        raise HTTPException(
-            status_code=404,
-            detail="Usuario no encontrado"
-        )
+    return {"mensaje": "Usuario eliminado correctamente"}
 
-    return {
-        "mensaje": "Usuario eliminado correctamente"
-    }
-
-
-# =========================================================
-# ACTUALIZAR USUARIO
-# =========================================================
 
 @router.put("/{usuario_id}")
-def actualizar_usuario(
-    usuario_id: int,
-    usuario: UsuarioUpdate
-):
-
-    exito = repo.actualizar(
-        usuario_id,
-        usuario
-    )
+def actualizar_usuario(usuario_id: int, usuario: UsuarioUpdate):
+    try:
+        exito = repo.actualizar(usuario_id, usuario)
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
 
     if not exito:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado o no se pudo actualizar")
 
-        raise HTTPException(
-            status_code=404,
-            detail="Usuario no encontrado"
-        )
-
-    return {
-        "mensaje": "Usuario actualizado correctamente"
-    }
+    return {"mensaje": "Usuario actualizado correctamente"}
