@@ -13,17 +13,52 @@ router = APIRouter(
 repo = UsuarioRepository()
 
 
-class LoginRequest(BaseModel):
+# =========================================================
+# MODELO PARA LOGIN
+# =========================================================
 
+class LoginRequest(BaseModel):
     correo: str
     password: str
 
+
+# =========================================================
+# MODELO PARA ACTUALIZAR USUARIO
+# =========================================================
+
+class UsuarioUpdate(BaseModel):
+    primer_nombre: str
+    segundo_nombre: str | None = None
+    primer_apellido: str
+    segundo_apellido: str | None = None
+
+    correo: str
+    codigo_personal: str | None = None
+    titulo_academico: str | None = None
+
+    estado: bool
+
+    rol_id: int
+    numero_documento: str
+
+    # Opcional al actualizar.
+    # Si no se envía, se conserva la contraseña actual.
+    contraseña: str | None = None
+
+
+# =========================================================
+# LISTAR USUARIOS
+# =========================================================
 
 @router.get("/")
 def listar_usuarios():
 
     return repo.obtener_todos()
 
+
+# =========================================================
+# LOGIN
+# =========================================================
 
 @router.post("/login")
 def login(datos: LoginRequest):
@@ -43,6 +78,10 @@ def login(datos: LoginRequest):
     return resultado
 
 
+# =========================================================
+# OBTENER USUARIO POR ID
+# =========================================================
+
 @router.get("/{usuario_id}")
 def obtener_usuario(usuario_id: int):
 
@@ -57,6 +96,10 @@ def obtener_usuario(usuario_id: int):
 
     return usuario
 
+
+# =========================================================
+# CREAR USUARIO
+# =========================================================
 
 @router.post("/")
 def crear_usuario(usuario: Usuario):
@@ -76,6 +119,10 @@ def crear_usuario(usuario: Usuario):
     }
 
 
+# =========================================================
+# ELIMINAR USUARIO
+# =========================================================
+
 @router.delete("/{usuario_id}")
 def eliminar_usuario(usuario_id: int):
 
@@ -93,10 +140,14 @@ def eliminar_usuario(usuario_id: int):
     }
 
 
+# =========================================================
+# ACTUALIZAR USUARIO
+# =========================================================
+
 @router.put("/{usuario_id}")
 def actualizar_usuario(
     usuario_id: int,
-    usuario: Usuario
+    usuario: UsuarioUpdate
 ):
 
     exito = repo.actualizar(
