@@ -41,7 +41,7 @@ ALLOWED_ORIGINS_DEFAULT = [
 ]
 
 # 2. Obtener la variable de entorno
-origins_env = os.getenv("ALLOWED_ORIGINS", "")
+origins_env = os.getenv("ALLOWED_ORIGINS", "https://api-carga-e4od.onrender.com")
 
 # 3. Construir la lista combinada sin duplicados
 origins_list = ALLOWED_ORIGINS_DEFAULT.copy()
