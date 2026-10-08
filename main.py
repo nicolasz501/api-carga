@@ -32,16 +32,23 @@ app = FastAPI(
 # CORS
 # =========================================================
 
-ALLOWED_ORIGINS = os.getenv(
+# 1. Obtener los orígenes desde la variable de entorno
+# 1. Obtener los orígenes desde la variable de entorno
+origins_env = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:5173,http://localhost:4173,http://127.0.0.1:5173"
-).split(",")
+)
 
+# 2. Convertir la cadena en lista limpia
+origins = [origin.strip() for origin in origins_env.split(",") if origin.strip()]
+
+# Agrega la URL de tu frontend desplegado en Render / Vercel o Netlify si aplica
+# origins.append("https://tu-frontend.onrender.com")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=origins,       # <-- Usar la lista explicita en lugar de ["*"]
+    allow_credentials=True,      # <-- Se mantiene en True
     allow_methods=["*"],
     allow_headers=["*"],
 )
