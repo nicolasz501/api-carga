@@ -8,6 +8,8 @@ class RespuestaRepository:
         self.db = Database()
 
     def obtener_todos(self):
+        conn = None
+
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
@@ -18,16 +20,19 @@ class RespuestaRepository:
                 ORDER BY respuesta_id ASC;
             """)
 
-            respuestas = cursor.fetchall()
-            conn.close()
-
-            return respuestas
+            return cursor.fetchall()
 
         except Exception as e:
             print(f"Error al obtener respuestas: {e}")
             return []
 
+        finally:
+            if conn:
+                conn.close()
+
     def obtener_por_id(self, respuesta_id: int):
+        conn = None
+
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
@@ -38,14 +43,15 @@ class RespuestaRepository:
                 WHERE respuesta_id = %s;
             """, (respuesta_id,))
 
-            respuesta = cursor.fetchone()
-            conn.close()
-
-            return respuesta
+            return cursor.fetchone()
 
         except Exception as e:
             print(f"Error al obtener respuesta: {e}")
             return None
+
+        finally:
+            if conn:
+                conn.close()
 
     def crear(self, respuesta: Respuesta):
         conn = None
@@ -55,8 +61,7 @@ class RespuestaRepository:
             cursor = conn.cursor()
 
             cursor.execute("""
-                INSERT INTO respuestas
-                (
+                INSERT INTO respuestas (
                     pregunta_id,
                     puntaje,
                     comentario,
@@ -71,21 +76,87 @@ class RespuestaRepository:
                 respuesta.estado
             ))
 
-            nuevo_id = cursor.fetchone()["respuesta_id"]
+            resultado = cursor.fetchone()
+            nuevo_id = resultado["respuesta_id"]
 
             conn.commit()
-            conn.close()
-
             return nuevo_id
 
         except Exception as e:
-            print(f"Error al crear respuesta: {e}")
-
             if conn:
                 conn.rollback()
+
+            print(f"Error al crear respuesta: {e}")
+            return None
+
+        finally:
+            if conn:
                 conn.close()
 
-            return None
+    def crear_lote(self, respuestas: list[Respuesta], comentario: str | None = None):
+        conn = None
+
+        try:
+            if len(respuestas) != 5:
+                raise ValueError(
+                    "La evaluación debe contener exactamente 5 respuestas."
+                )
+
+            pregunta_ids = [r.pregunta_id for r in respuestas]
+
+            if len(set(pregunta_ids)) != 5:
+                raise ValueError(
+                    "No puedes responder dos veces la misma pregunta "
+                    "en una misma solicitud."
+                )
+
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+
+            ids_creados = []
+
+            for indice, respuesta in enumerate(respuestas):
+                # El comentario general se almacena una sola vez.
+                comentario_respuesta = (
+                    comentario.strip()
+                    if indice == 0 and comentario and comentario.strip()
+                    else None
+                )
+
+                cursor.execute("""
+                    INSERT INTO respuestas (
+                        pregunta_id,
+                        puntaje,
+                        comentario,
+                        estado
+                    )
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING respuesta_id;
+                """, (
+                    respuesta.pregunta_id,
+                    respuesta.puntaje,
+                    comentario_respuesta,
+                    respuesta.estado
+                ))
+
+                resultado = cursor.fetchone()
+                ids_creados.append(resultado["respuesta_id"])
+
+            # Solo se confirman las cinco respuestas si todas se insertan.
+            conn.commit()
+
+            return ids_creados
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+
+            print(f"Error al crear respuestas por lote: {e}")
+            raise
+
+        finally:
+            if conn:
+                conn.close()
 
     def eliminar(self, respuesta_id: int):
         conn = None
@@ -103,18 +174,18 @@ class RespuestaRepository:
             eliminado = cursor.fetchone()
 
             conn.commit()
-            conn.close()
-
             return eliminado is not None
 
         except Exception as e:
-            print(f"Error al eliminar respuesta: {e}")
-
             if conn:
                 conn.rollback()
-                conn.close()
 
+            print(f"Error al eliminar respuesta: {e}")
             return False
+
+        finally:
+            if conn:
+                conn.close()
 
     def actualizar(self, respuesta_id: int, respuesta: Respuesta):
         conn = None
@@ -128,7 +199,8 @@ class RespuestaRepository:
                 SET pregunta_id = %s,
                     puntaje = %s,
                     comentario = %s,
-                    estado = %s
+                    estado = %s,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE respuesta_id = %s
                 RETURNING respuesta_id;
             """, (
@@ -142,15 +214,15 @@ class RespuestaRepository:
             actualizado = cursor.fetchone()
 
             conn.commit()
-            conn.close()
-
             return actualizado is not None
 
         except Exception as e:
-            print(f"Error al actualizar respuesta: {e}")
-
             if conn:
                 conn.rollback()
-                conn.close()
 
+            print(f"Error al actualizar respuesta: {e}")
             return False
+
+        finally:
+            if conn:
+                conn.close()
