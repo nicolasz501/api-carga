@@ -41,11 +41,11 @@ ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:4173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
-    "https://api-carga-e4od.onrender.com",
+    "https://cargadocente.netlify.app",
 ]
 
-# En Render debes configurar ALLOWED_ORIGINS con el dominio
-# real de Netlify. Se pueden separar varios dominios con comas.
+# Leer los dominios configurados en Render.
+# Se pueden separar varios dominios mediante comas.
 origins_env = os.getenv("ALLOWED_ORIGINS", "")
 
 extra_origins = [
@@ -54,6 +54,7 @@ extra_origins = [
     if origin.strip()
 ]
 
+# Combinar los dominios predeterminados con los de Render.
 origins = list(
     dict.fromkeys(ALLOWED_ORIGINS_DEFAULT + extra_origins)
 )
