@@ -1,3 +1,4 @@
+
 import os
 
 from fastapi import FastAPI
@@ -23,43 +24,43 @@ from app.api import (
 
 app = FastAPI(
     title="API Carga docente",
-    description="Backend modular para monitoreo académico usando FastAPI y PostgreSQL puro",
-    version="1.0.0"
+    description=(
+        "Backend modular para monitoreo académico "
+        "usando FastAPI y PostgreSQL puro"
+    ),
+    version="1.0.0",
 )
 
 
 # =========================================================
-# CORS
+# CORS: FRONTEND LOCAL Y NETLIFY
 # =========================================================
 
-# 1. Lista base de orígenes de desarrollo local y producción
 ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:5173",
     "http://localhost:4173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "https://api-carga-e4od.onrender.com",
 ]
 
-# 2. Obtener la variable de entorno
-origins_env = os.getenv("ALLOWED_ORIGINS", "https://api-carga-e4od.onrender.com")
+# En Render debes configurar ALLOWED_ORIGINS con el dominio
+# real de Netlify. Se pueden separar varios dominios con comas.
+origins_env = os.getenv("ALLOWED_ORIGINS", "")
 
-# 3. Construir la lista combinada sin duplicados
-origins_list = ALLOWED_ORIGINS_DEFAULT.copy()
+extra_origins = [
+    origin.strip().rstrip("/")
+    for origin in origins_env.split(",")
+    if origin.strip()
+]
 
-if origins_env:
-    extra_origins = [
-        o.strip().strip("'\"") 
-        for o in origins_env.split(",") 
-        if o.strip()
-    ]
-    origins_list.extend(extra_origins)
-
-# Eliminar duplicados manteniendo el orden
-origins = list(dict.fromkeys(origins_list))
+origins = list(
+    dict.fromkeys(ALLOWED_ORIGINS_DEFAULT + extra_origins)
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # Lista explícita de orígenes permitidos
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["*"],
@@ -67,7 +68,7 @@ app.add_middleware(
 
 
 # =========================================================
-# ROUTERS
+# RUTAS DE LA API
 # =========================================================
 
 app.include_router(roles.router)
@@ -88,7 +89,7 @@ app.include_router(respuestas.router)
 
 
 # =========================================================
-# HEALTH CHECK
+# COMPROBACIÓN DEL SERVIDOR
 # =========================================================
 
 @app.get("/", tags=["Health"])
@@ -96,5 +97,5 @@ def estado_api():
     return {
         "status": "ok",
         "mensaje": "La API de monitoreo se encuentra en línea y funcional",
-        "version": app.version
+        "version": app.version,
     }
