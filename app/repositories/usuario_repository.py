@@ -9,9 +9,7 @@ class UsuarioRepository:
     def __init__(self):
         self.db = Database()
 
-    # =========================================================
-    # OBTENER TODOS
-    # =========================================================
+
 
     def obtener_todos(self):
         conn = None
@@ -41,9 +39,7 @@ class UsuarioRepository:
 
             return []
 
-    # =========================================================
-    # OBTENER POR ID
-    # =========================================================
+
 
     def obtener_por_id(self, usuario_id: int):
         conn = None
@@ -73,9 +69,7 @@ class UsuarioRepository:
 
             return None
 
-    # =========================================================
-    # CREAR
-    # =========================================================
+
 
     def crear(self, usuario: Usuario):
         conn = None
@@ -136,9 +130,7 @@ class UsuarioRepository:
 
             return None
 
-    # =========================================================
-    # LOGIN
-    # =========================================================
+
 
     def login(self, correo: str, password: str):
 
@@ -149,9 +141,6 @@ class UsuarioRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            # =====================================================
-            # 1. BUSCAR USUARIO Y SU ROL
-            # =====================================================
 
             cursor.execute("""
                 SELECT
@@ -190,9 +179,7 @@ class UsuarioRepository:
 
                 return None
 
-            # =====================================================
-            # 2. VALIDAR CONTRASEÑA
-            # =====================================================
+
 
             contraseña_guardada = usuario["contraseña"]
 
@@ -220,9 +207,6 @@ class UsuarioRepository:
 
                 return None
 
-            # =====================================================
-            # 3. OBTENER MÓDULOS DEL ROL
-            # =====================================================
 
             cursor.execute("""
                 SELECT
@@ -248,9 +232,7 @@ class UsuarioRepository:
 
             modulos = cursor.fetchall()
 
-            # =====================================================
-            # 4. CONSTRUIR LISTA DE MÓDULOS
-            # =====================================================
+
 
             lista_modulos = []
 
@@ -265,9 +247,6 @@ class UsuarioRepository:
                     "puede_eliminar": modulo["puede_eliminar"]
                 })
 
-            # =====================================================
-            # 5. DATOS DEL USUARIO
-            # =====================================================
 
             usuario_data = {
 
@@ -289,9 +268,7 @@ class UsuarioRepository:
                 "estado": usuario["estado"]
             }
 
-            # =====================================================
-            # 6. DATOS DEL ROL
-            # =====================================================
+
 
             rol_data = {
 
@@ -299,9 +276,6 @@ class UsuarioRepository:
                 "nombre": usuario["nombre_rol"]
             }
 
-            # =====================================================
-            # 7. RESPUESTA FINAL
-            # =====================================================
 
             resultado = {
 
@@ -329,9 +303,6 @@ class UsuarioRepository:
             return None
 
 
-# =========================================================
-    # ACTUALIZAR
-    # =========================================================
 
     def actualizar(self, usuario_id: int, usuario):
         conn = None
@@ -403,9 +374,7 @@ class UsuarioRepository:
 
             return False
 
-    # =========================================================
-    # ELIMINAR
-    # =========================================================
+
 
     def eliminar(self, usuario_id: int):
         conn = None

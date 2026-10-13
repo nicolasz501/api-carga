@@ -1,11 +1,11 @@
 from fastapi import APIRouter, HTTPException
-from app.models.Grupo import Grupo  # O el archivo donde esté tu Pydantic model
+from app.models.Grupo import Grupo  
 from app.repositories.grupo_repository import GrupoRepository
 
 router = APIRouter(prefix="/grupos", tags=["Gestión de Grupos"])
 repo = GrupoRepository()
 
-# ... tus otros endpoints (GET, POST, DELETE) ...
+
 
 @router.put("/{grupos_id}")
 def actualizar_grupo(grupos_id: int, grupo: Grupo):

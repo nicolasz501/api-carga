@@ -7,9 +7,6 @@ class PeriodoAcademicoRepository:
     def __init__(self):
         self.db = Database()
 
-    # =========================================================
-    # OBTENER TODOS
-    # =========================================================
     def obtener_todos(self):
         conn = None
 
@@ -42,9 +39,6 @@ class PeriodoAcademicoRepository:
             if conn:
                 conn.close()
 
-    # =========================================================
-    # OBTENER POR ID
-    # =========================================================
     def obtener_por_id(self, periodo_id: int):
         conn = None
 
@@ -77,9 +71,7 @@ class PeriodoAcademicoRepository:
             if conn:
                 conn.close()
 
-    # =========================================================
-    # CREAR
-    # =========================================================
+
     def crear(self, periodo: PeriodoAcademico):
         conn = None
 
@@ -125,9 +117,7 @@ class PeriodoAcademicoRepository:
             if conn:
                 conn.close()
 
-    # =========================================================
-    # ACTUALIZAR
-    # =========================================================
+
     def actualizar(
         self,
         periodo_id: int,
@@ -175,9 +165,7 @@ class PeriodoAcademicoRepository:
             if conn:
                 conn.close()
 
-    # =========================================================
-    # ELIMINAR
-    # =========================================================
+
     def eliminar(self, periodo_id: int):
         conn = None
 

@@ -12,19 +12,10 @@ router = APIRouter(
 
 repo = UsuarioRepository()
 
-
-# =========================================================
-# MODELO PARA LOGIN
-# =========================================================
-
 class LoginRequest(BaseModel):
     correo: str
     password: str
 
-
-# =========================================================
-# MODELO PARA ACTUALIZAR USUARIO
-# =========================================================
 
 class UsuarioUpdate(BaseModel):
     primer_nombre: str
@@ -46,19 +37,12 @@ class UsuarioUpdate(BaseModel):
     contraseña: str | None = None
 
 
-# =========================================================
-# LISTAR USUARIOS
-# =========================================================
-
 @router.get("/")
 def listar_usuarios():
 
     return repo.obtener_todos()
 
 
-# =========================================================
-# LOGIN
-# =========================================================
 
 @router.post("/login")
 def login(datos: LoginRequest):
@@ -78,9 +62,6 @@ def login(datos: LoginRequest):
     return resultado
 
 
-# =========================================================
-# OBTENER USUARIO POR ID
-# =========================================================
 
 @router.get("/{usuario_id}")
 def obtener_usuario(usuario_id: int):
@@ -97,9 +78,6 @@ def obtener_usuario(usuario_id: int):
     return usuario
 
 
-# =========================================================
-# CREAR USUARIO
-# =========================================================
 
 @router.post("/")
 def crear_usuario(usuario: Usuario):

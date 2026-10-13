@@ -32,10 +32,6 @@ app = FastAPI(
 )
 
 
-# =========================================================
-# CORS: FRONTEND LOCAL Y NETLIFY
-# =========================================================
-
 ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:5173",
     "http://localhost:4173",
@@ -44,8 +40,7 @@ ALLOWED_ORIGINS_DEFAULT = [
     "https://cargadocente.netlify.app",
 ]
 
-# Leer los dominios configurados en Render.
-# Se pueden separar varios dominios mediante comas.
+
 origins_env = os.getenv("ALLOWED_ORIGINS", "")
 
 extra_origins = [
@@ -54,7 +49,7 @@ extra_origins = [
     if origin.strip()
 ]
 
-# Combinar los dominios predeterminados con los de Render.
+
 origins = list(
     dict.fromkeys(ALLOWED_ORIGINS_DEFAULT + extra_origins)
 )
@@ -68,16 +63,12 @@ app.add_middleware(
 )
 
 
-# =========================================================
-# RUTAS DE LA API
-# =========================================================
 
 app.include_router(roles.router)
 app.include_router(modulos.router)
 app.include_router(modulos_rol.router)
 app.include_router(facultades.router)
 app.include_router(usuarios.router)
-
 app.include_router(periodos_academicos.router)
 app.include_router(programas_academicos.router)
 app.include_router(asignaturas.router)
@@ -88,10 +79,6 @@ app.include_router(evaluaciones.router)
 app.include_router(preguntas.router)
 app.include_router(respuestas.router)
 
-
-# =========================================================
-# COMPROBACIÓN DEL SERVIDOR
-# =========================================================
 
 @app.get("/", tags=["Health"])
 def estado_api():
