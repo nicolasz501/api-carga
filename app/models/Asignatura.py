@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+
 
 
 class Asignatura(BaseModel):
@@ -10,5 +10,4 @@ class Asignatura(BaseModel):
     nombres_asignaturas: str
     creditos: int
     estado: bool = True
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    

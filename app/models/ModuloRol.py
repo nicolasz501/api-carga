@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import datetime
+
 
 
 class ModuloRol(BaseModel):
@@ -12,6 +12,5 @@ class ModuloRol(BaseModel):
     puede_editar: bool = False
     puede_eliminar: bool = False
     estado: bool = True
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    
     

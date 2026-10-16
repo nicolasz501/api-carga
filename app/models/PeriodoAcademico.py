@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from datetime import date, datetime
+from datetime import date
 
 
 class PeriodoAcademico(BaseModel):
@@ -10,5 +10,4 @@ class PeriodoAcademico(BaseModel):
     fecha_inicio: date
     fecha_finalizar: date
     estado: bool = True
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+   
