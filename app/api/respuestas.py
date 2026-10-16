@@ -1,3 +1,4 @@
+
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -16,11 +17,15 @@ repo = RespuestaRepository()
 
 
 class RespuestasLote(BaseModel):
+    usuario_id: int = Field(gt=0)
     respuestas: list[Respuesta] = Field(
         min_length=5,
         max_length=5
     )
-    comentario: Optional[str] = None
+    comentario: Optional[str] = Field(
+        default=None,
+        max_length=2000
+    )
 
     @model_validator(mode="after")
     def validar_preguntas_unicas(self):
@@ -28,7 +33,8 @@ class RespuestasLote(BaseModel):
 
         if len(set(ids)) != 5:
             raise ValueError(
-                "Las cinco respuestas deben corresponder a preguntas diferentes."
+                "Las cinco respuestas deben corresponder "
+                "a preguntas diferentes."
             )
 
         return self
@@ -73,11 +79,13 @@ def crear_respuestas_lote(datos: RespuestasLote):
     try:
         ids = repo.crear_lote(
             respuestas=datos.respuestas,
+            usuario_id=datos.usuario_id,
             comentario=datos.comentario
         )
 
         return {
             "mensaje": "Las cinco respuestas se registraron exitosamente.",
+            "usuario_id": datos.usuario_id,
             "ids": ids,
             "total": len(ids),
             "comentario_guardado": bool(
