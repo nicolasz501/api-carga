@@ -18,9 +18,10 @@ from app.api import (
     horarios,
     evaluaciones,
     preguntas,
+    preguntas_evaluacion,
     respuestas,
 )
-from app.routers.pregunta_evaluacion_router import router as pregunta_evaluacion_router
+
 
 app = FastAPI(
     title="API Carga docente",
@@ -77,9 +78,8 @@ app.include_router(carga_docente.router)
 app.include_router(horarios.router)
 app.include_router(evaluaciones.router)
 app.include_router(preguntas.router)
+app.include_router(preguntas_evaluacion.router)
 app.include_router(respuestas.router)
-
-app.include_router(pregunta_evaluacion_router)
 
 @app.get("/", tags=["Health"])
 def estado_api():
