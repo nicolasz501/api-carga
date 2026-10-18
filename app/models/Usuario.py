@@ -4,7 +4,6 @@ from typing import Optional
 
 class Usuario(BaseModel):
     usuario_id: Optional[int] = None
-    facultades_id: Optional[int] = None
     rol_id: int
     primer_nombre: str
     segundo_nombre: Optional[str] = None
