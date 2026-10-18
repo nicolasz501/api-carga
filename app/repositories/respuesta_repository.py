@@ -136,7 +136,12 @@ class RespuestaRepository:
             ))
 
             resultado = cursor.fetchone()
-            nuevo_id = resultado["respuesta_id"]
+            
+            # Compatibilidad segura (Diccionario o Tupla)
+            if isinstance(resultado, dict):
+                nuevo_id = resultado["respuesta_id"]
+            else:
+                nuevo_id = resultado[0]
 
             conn.commit()
             return nuevo_id
@@ -201,10 +206,11 @@ class RespuestaRepository:
                   AND estado = TRUE;
             """, (pregunta_ids,))
 
-            preguntas_validas = {
-                fila["pregunta_id"]
-                for fila in cursor.fetchall()
-            }
+            filas_preguntas = cursor.fetchall()
+            preguntas_validas = set()
+            for fila in filas_preguntas:
+                p_id = fila["pregunta_id"] if isinstance(fila, dict) else fila[0]
+                preguntas_validas.add(p_id)
 
             if preguntas_validas != set(pregunta_ids):
                 raise ValueError(
@@ -242,7 +248,10 @@ class RespuestaRepository:
                 ))
 
                 resultado = cursor.fetchone()
-                ids_creados.append(resultado["respuesta_id"])
+                
+                # Obtener ID de forma segura (Diccionario o Tupla)
+                id_creado = resultado["respuesta_id"] if isinstance(resultado, dict) else resultado[0]
+                ids_creados.append(id_creado)
 
             # Confirmar las cinco respuestas en una transacción.
             conn.commit()
