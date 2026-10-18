@@ -1,4 +1,3 @@
-
 from app.core.database import Database
 from app.models.Respuesta import Respuesta
 
@@ -215,7 +214,7 @@ class RespuestaRepository:
             ids_creados = []
 
             for indice, respuesta in enumerate(respuestas):
-                # Guardar el comentario general una sola vez.
+                # Guardar el comentario general una sola vez en la primera respuesta.
                 comentario_respuesta = (
                     comentario.strip()[:500]
                     if indice == 0
