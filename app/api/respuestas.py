@@ -39,40 +39,7 @@ class RespuestasLote(BaseModel):
         return self
 
 
-@router.get("/")
-def listar_respuestas():
-    return repo.obtener_todos()
-
-
-@router.get("/{respuesta_id}")
-def obtener_respuesta(respuesta_id: int):
-    respuesta = repo.obtener_por_id(respuesta_id)
-
-    if respuesta is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Respuesta no encontrada"
-        )
-
-    return respuesta
-
-
-@router.post("/")
-def crear_respuesta(respuesta: Respuesta):
-    nuevo_id = repo.crear(respuesta)
-
-    if nuevo_id is None:
-        raise HTTPException(
-            status_code=500,
-            detail="No se pudo registrar la respuesta."
-        )
-
-    return {
-        "mensaje": "Respuesta registrada exitosamente",
-        "id": nuevo_id
-    }
-
-
+# 1. Rutas específicas / estáticas van PRIMERO para evitar conflictos de tipado
 @router.post("/lote")
 def crear_respuestas_lote(datos: RespuestasLote):
     try:
@@ -105,6 +72,41 @@ def crear_respuestas_lote(datos: RespuestasLote):
             status_code=500,
             detail="No se pudieron registrar las respuestas."
         )
+
+
+@router.get("/")
+def listar_respuestas():
+    return repo.obtener_todos()
+
+
+@router.post("/")
+def crear_respuesta(respuesta: Respuesta):
+    nuevo_id = repo.crear(respuesta)
+
+    if nuevo_id is None:
+        raise HTTPException(
+            status_code=500,
+            detail="No se pudo registrar la respuesta."
+        )
+
+    return {
+        "mensaje": "Respuesta registrada exitosamente",
+        "id": nuevo_id
+    }
+
+
+# 2. Rutas dinámicas con parámetros numéricos van DESPUÉS
+@router.get("/{respuesta_id}")
+def obtener_respuesta(respuesta_id: int):
+    respuesta = repo.obtener_por_id(respuesta_id)
+
+    if respuesta is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Respuesta no encontrada"
+        )
+
+    return respuesta
 
 
 @router.delete("/{respuesta_id}")
