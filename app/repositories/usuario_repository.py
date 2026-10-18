@@ -9,8 +9,6 @@ class UsuarioRepository:
     def __init__(self):
         self.db = Database()
 
-
-
     def obtener_todos(self):
         conn = None
 
@@ -38,8 +36,6 @@ class UsuarioRepository:
                 conn.close()
 
             return []
-
-
 
     def obtener_por_id(self, usuario_id: int):
         conn = None
@@ -69,8 +65,6 @@ class UsuarioRepository:
 
             return None
 
-
-
     def crear(self, usuario: Usuario):
         conn = None
 
@@ -86,14 +80,13 @@ class UsuarioRepository:
             cursor.execute("""
                 INSERT INTO usuarios
                 (
-                    facultades_id, rol_id, primer_nombre, segundo_nombre,
+                    rol_id, primer_nombre, segundo_nombre,
                     primer_apellido, segundo_apellido, correo, contraseña,
                     numero_documento, codigo_personal, titulo_academico, estado
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING usuario_id;
             """, (
-                usuario.facultades_id,
                 usuario.rol_id,
                 usuario.primer_nombre,
                 usuario.segundo_nombre,
@@ -130,8 +123,6 @@ class UsuarioRepository:
 
             return None
 
-
-
     def login(self, correo: str, password: str):
 
         conn = None
@@ -141,11 +132,9 @@ class UsuarioRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-
             cursor.execute("""
                 SELECT
                     u.usuario_id,
-                    u.facultades_id,
                     u.rol_id,
                     u.primer_nombre,
                     u.segundo_nombre,
@@ -179,8 +168,6 @@ class UsuarioRepository:
 
                 return None
 
-
-
             contraseña_guardada = usuario["contraseña"]
 
             contraseña_valida = False
@@ -207,7 +194,6 @@ class UsuarioRepository:
 
                 return None
 
-
             cursor.execute("""
                 SELECT
                     m.modulos_id,
@@ -232,8 +218,6 @@ class UsuarioRepository:
 
             modulos = cursor.fetchall()
 
-
-
             lista_modulos = []
 
             for modulo in modulos:
@@ -247,11 +231,9 @@ class UsuarioRepository:
                     "puede_eliminar": modulo["puede_eliminar"]
                 })
 
-
             usuario_data = {
 
                 "usuario_id": usuario["usuario_id"],
-                "facultades_id": usuario["facultades_id"],
                 "rol_id": usuario["rol_id"],
 
                 "primer_nombre": usuario["primer_nombre"],
@@ -268,14 +250,11 @@ class UsuarioRepository:
                 "estado": usuario["estado"]
             }
 
-
-
             rol_data = {
 
                 "rol_id": usuario["rol_id_real"],
                 "nombre": usuario["nombre_rol"]
             }
-
 
             resultado = {
 
@@ -301,8 +280,6 @@ class UsuarioRepository:
                 conn.close()
 
             return None
-
-
 
     def actualizar(self, usuario_id: int, usuario):
         conn = None
@@ -373,8 +350,6 @@ class UsuarioRepository:
                 conn.close()
 
             return False
-
-
 
     def eliminar(self, usuario_id: int):
         conn = None
