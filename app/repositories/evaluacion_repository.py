@@ -54,8 +54,11 @@ class EvaluacionRepository:
 
     def obtener_para_docente(self, usuario_id: int):
         """
-        Devuelve las evaluaciones activas asignadas al docente
-        que tengan preguntas activas pendientes de responder.
+        Devuelve únicamente evaluaciones activas asignadas al docente,
+        con preguntas activas pendientes.
+
+        Las evaluaciones cuyo título comienza con [PLANTILLA]
+        nunca se muestran como asignaciones a los docentes.
         """
         conn = None
         try:
@@ -63,18 +66,25 @@ class EvaluacionRepository:
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT e.*
+                SELECT DISTINCT e.*
                 FROM evaluaciones e
                 INNER JOIN carga_docente cd
                     ON cd.carga_id = e.carga_id
                 WHERE cd.user_id = %s
                   AND e.estado = TRUE
+
+                  -- Excluir modelos que no son asignaciones.
+                  AND COALESCE(e.titulo, '') NOT ILIKE '[PLANTILLA]%%'
+
+                  -- Debe tener preguntas activas.
                   AND EXISTS (
                       SELECT 1
                       FROM preguntas_evaluacion pe
                       WHERE pe.evaluacion_id = e.evaluacion_id
                         AND pe.estado = TRUE
                   )
+
+                  -- Debe quedar al menos una pregunta sin responder.
                   AND EXISTS (
                       SELECT 1
                       FROM preguntas_evaluacion pe
@@ -89,6 +99,7 @@ class EvaluacionRepository:
                               AND r.estado = TRUE
                         )
                   )
+
                 ORDER BY e.evaluacion_id ASC;
             """, (usuario_id, usuario_id))
 
@@ -140,7 +151,7 @@ class EvaluacionRepository:
             if conn:
                 conn.rollback()
             print(f"Error al crear evaluación: {e}")
-            return None
+            raise
 
         finally:
             if conn:
@@ -189,11 +200,11 @@ class EvaluacionRepository:
         plantilla_evaluacion_id: int
     ):
         """
-        Asigna una autoevaluación a cada docente activo del periodo
-        de la plantilla, sin crear tablas nuevas.
+        Crea una sola autoevaluación por docente para el periodo
+        de la plantilla, reutilizando las tablas existentes.
 
-        Copia las preguntas activas de la plantilla y evita duplicar
-        una autoevaluación activa para el mismo docente y periodo.
+        Excluye la plantilla al comprobar asignaciones existentes,
+        copia sus preguntas y evita duplicar autoevaluaciones activas.
         """
         conn = None
 
@@ -201,12 +212,13 @@ class EvaluacionRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            # 1. Obtener la evaluación que servirá como plantilla.
+            # 1. Consultar la plantilla.
             cursor.execute("""
                 SELECT
                     evaluacion_id,
                     periodo_id,
                     tipo_evaluacion,
+                    titulo,
                     fecha_envio
                 FROM evaluaciones
                 WHERE evaluacion_id = %s
@@ -221,15 +233,16 @@ class EvaluacionRepository:
                     "como plantilla."
                 )
 
-            if plantilla["tipo_evaluacion"] != "AUTOEVALUACION":
+            if str(plantilla["tipo_evaluacion"]).upper() != "AUTOEVALUACION":
                 raise ValueError(
                     "La plantilla debe ser de tipo AUTOEVALUACION."
                 )
 
             periodo_id = plantilla["periodo_id"]
             fecha_envio = plantilla["fecha_envio"]
+            titulo_plantilla = plantilla["titulo"] or "Autoevaluación"
 
-            # 2. Comprobar que la plantilla tenga preguntas activas.
+            # 2. Obtener las preguntas activas de la plantilla.
             cursor.execute("""
                 SELECT pregunta_id
                 FROM preguntas_evaluacion
@@ -245,8 +258,9 @@ class EvaluacionRepository:
                     "La evaluación plantilla no tiene preguntas activas."
                 )
 
-            # 3. Obtener una sola carga por docente para el periodo.
-            # DISTINCT ON evita contar varias veces al docente.
+            # 3. Obtener una sola carga por docente.
+            # Se utiliza periodo_id de carga_docente para elegir docentes
+            # con carga en el periodo de la plantilla.
             cursor.execute("""
                 SELECT DISTINCT ON (cd.user_id)
                     cd.user_id,
@@ -268,8 +282,9 @@ class EvaluacionRepository:
                 usuario_id = docente["user_id"]
                 carga_id = docente["carga_id"]
 
-                # 4. Si ya tiene una autoevaluación activa para este
-                # periodo, no crear otra.
+                # 4. No contar la propia plantilla como asignación.
+                # Excluir títulos de plantilla también evita que un modelo
+                # antiguo impida crear la asignación real.
                 cursor.execute("""
                     SELECT 1
                     FROM evaluaciones e
@@ -279,14 +294,20 @@ class EvaluacionRepository:
                       AND e.periodo_id = %s
                       AND e.tipo_evaluacion = 'AUTOEVALUACION'
                       AND e.estado = TRUE
+                      AND e.evaluacion_id <> %s
+                      AND COALESCE(e.titulo, '') NOT ILIKE '[PLANTILLA]%%'
                     LIMIT 1;
-                """, (usuario_id, periodo_id))
+                """, (
+                    usuario_id,
+                    periodo_id,
+                    plantilla_evaluacion_id
+                ))
 
                 if cursor.fetchone():
                     omitidas += 1
                     continue
 
-                # 5. Crear una evaluación individual para el docente.
+                # 5. Crear la evaluación individual del docente.
                 cursor.execute("""
                     INSERT INTO evaluaciones (
                         carga_id,
@@ -309,7 +330,7 @@ class EvaluacionRepository:
                 nueva = cursor.fetchone()
                 nuevo_id = nueva["evaluacion_id"]
 
-                # 6. Copiar las preguntas activas de la plantilla.
+                # 6. Copiar las preguntas activas.
                 cursor.execute("""
                     INSERT INTO preguntas_evaluacion (
                         evaluacion_id,
@@ -327,6 +348,16 @@ class EvaluacionRepository:
 
                 creadas += 1
 
+            # 7. Marcar la plantilla para que no se muestre al docente.
+            if not str(titulo_plantilla).upper().startswith("[PLANTILLA]"):
+                titulo_nuevo = f"[PLANTILLA] {titulo_plantilla}"
+
+                cursor.execute("""
+                    UPDATE evaluaciones
+                    SET titulo = %s
+                    WHERE evaluacion_id = %s;
+                """, (titulo_nuevo, plantilla_evaluacion_id))
+
             conn.commit()
 
             return {
@@ -340,7 +371,9 @@ class EvaluacionRepository:
             if conn:
                 conn.rollback()
 
-            print(f"Error en asignación masiva de autoevaluaciones: {e}")
+            print(
+                f"Error en asignación masiva de autoevaluaciones: {e}"
+            )
             raise
 
         finally:
