@@ -1,14 +1,12 @@
 
-import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from app.repositories.respuesta_repository import RespuestaRepository
 from app.api.usuarios import UsuarioActual, get_usuario_actual
 
-logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/respuestas",
@@ -28,44 +26,14 @@ class RespuestaLoteItem(BaseModel):
 class RespuestasLote(BaseModel):
     usuario_id: int = Field(gt=0)
     evaluacion_id: int = Field(gt=0)
-
-    respuestas: list[RespuestaLoteItem] = Field(
-        min_length=5,
-        max_length=5,
-    )
-
+    respuestas: list[RespuestaLoteItem] = Field(min_length=1)
     comentario: Optional[str] = Field(
         default=None,
         max_length=500,
     )
 
-    @model_validator(mode="after")
-    def validar_preguntas_unicas(self):
-        relaciones = [
-            respuesta.pregunta_evaluacion_id
-            for respuesta in self.respuestas
-        ]
-        preguntas = [
-            respuesta.pregunta_id
-            for respuesta in self.respuestas
-        ]
-
-        if len(set(relaciones)) != 5:
-            raise ValueError(
-                "Las cinco respuestas deben corresponder "
-                "a relaciones de preguntas diferentes."
-            )
-
-        if len(set(preguntas)) != 5:
-            raise ValueError(
-                "No puedes responder dos veces la misma pregunta."
-            )
-
-        return self
-
 
 def es_administrador(usuario: UsuarioActual) -> bool:
-    """Comprueba si el rol del usuario tiene permisos administrativos."""
     rol = getattr(usuario, "rol", None)
 
     if isinstance(rol, dict):
@@ -86,14 +54,12 @@ def es_administrador(usuario: UsuarioActual) -> bool:
 
 
 def obtener_propietario(respuesta):
-    """Obtiene usuario_id de una fila devuelta como tupla o diccionario."""
     if respuesta is None:
         return None
 
     if isinstance(respuesta, dict):
         return respuesta.get("usuario_id")
 
-    # obtener_por_id selecciona usuario_id en la posición 3.
     return respuesta[3]
 
 
@@ -102,7 +68,8 @@ def crear_respuestas_lote(
     datos: RespuestasLote,
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
-    """Guarda cinco respuestas para una evaluación del usuario autenticado."""
+    """Guarda las respuestas y el comentario del usuario autenticado."""
+
     usuario_id = usuario.usuario_id
 
     if usuario_id != datos.usuario_id:
@@ -120,12 +87,11 @@ def crear_respuestas_lote(
         )
 
         return {
-            "mensaje": "Las respuestas se registraron exitosamente.",
+            "mensaje": "Respuestas guardadas correctamente.",
             "usuario_id": usuario_id,
             "evaluacion_id": datos.evaluacion_id,
             "ids": ids,
             "total": len(ids),
-            "completada": True,
             "comentario_guardado": bool(
                 datos.comentario and datos.comentario.strip()
             ),
@@ -138,13 +104,9 @@ def crear_respuestas_lote(
         ) from error
 
     except Exception:
-        logger.exception(
-            "Error guardando respuestas del usuario %s",
-            usuario_id,
-        )
         raise HTTPException(
             status_code=500,
-            detail="No se pudieron registrar las respuestas.",
+            detail="No se pudieron guardar las respuestas.",
         )
 
 
@@ -152,7 +114,8 @@ def crear_respuestas_lote(
 def listar_respuestas(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
-    """Los administradores consultan todas; otros usuarios, solo las propias."""
+    """Los administradores ven todas las respuestas; cada usuario, las propias."""
+
     conn = None
 
     try:
@@ -208,7 +171,6 @@ def listar_respuestas(
         return cursor.fetchall()
 
     except Exception:
-        logger.exception("Error al listar respuestas")
         raise HTTPException(
             status_code=500,
             detail="No se pudieron consultar las respuestas.",
@@ -250,10 +212,6 @@ def obtener_respuesta(
         raise
 
     except Exception:
-        logger.exception(
-            "Error consultando respuesta %s",
-            respuesta_id,
-        )
         raise HTTPException(
             status_code=500,
             detail="No se pudo consultar la respuesta.",
