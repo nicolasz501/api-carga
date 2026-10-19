@@ -350,7 +350,7 @@ class EvaluacionRepository:
                     SELECT
                         id_carga,
                         'AUTOEVALUACION',
-                        'Autoevaluación',
+                        'Autoevaluación individual',
                         %s,
                         TRUE
                     FROM docentes
