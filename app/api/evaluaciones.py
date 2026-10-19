@@ -8,7 +8,6 @@ from app.models.Evaluacion import Evaluacion
 from app.repositories.evaluacion_repository import EvaluacionRepository
 from app.api.usuarios import (
     UsuarioActual,
-    es_administrador,
     get_usuario_actual,
     requiere_jefe,
 )
@@ -27,37 +26,14 @@ class AsignacionEvaluacion(BaseModel):
     carga_id: int = Field(gt=0)
 
 
-class EstadoPlantilla(BaseModel):
-    estado: bool
-
-
-class VisibilidadEvaluacion(BaseModel):
-    visible_docentes: bool
-
-
-class AsignacionMasiva(BaseModel):
-    plantilla_evaluacion_id: int = Field(gt=0)
-
-
-def es_visible(evaluacion):
-    """Evalúa la visibilidad de una evaluación devuelta por el repositorio."""
-    if not isinstance(evaluacion, dict):
-        return False
-
-    valor = evaluacion.get("visible_docentes", False)
-
-    return valor is True or valor == 1 or (
-        isinstance(valor, str)
-        and valor.strip().lower() in ("true", "1", "si", "sí")
-    )
-
-
 @router.get("/mis-evaluaciones")
 def mis_evaluaciones(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
+    """Consulta las evaluaciones de las cargas activas del usuario."""
     try:
         return repo.obtener_para_docente(usuario.usuario_id)
+
     except Exception:
         logger.exception(
             "Error consultando evaluaciones del usuario %s",
@@ -69,85 +45,17 @@ def mis_evaluaciones(
         )
 
 
-@router.get("/plantillas-autoevaluacion")
-def listar_plantillas_autoevaluacion(
-    _jefe: UsuarioActual = Depends(requiere_jefe),
-):
-    try:
-        return repo.listar_plantillas_autoevaluacion()
-    except Exception:
-        logger.exception("Error listando plantillas de autoevaluación")
-        raise HTTPException(
-            status_code=500,
-            detail="No fue posible consultar las plantillas.",
-        )
-
-
-@router.put("/{evaluacion_id}/estado")
-def cambiar_estado_autoevaluacion(
-    evaluacion_id: int,
-    solicitud: EstadoPlantilla,
-    _jefe: UsuarioActual = Depends(requiere_jefe),
-):
-    try:
-        resultado = repo.cambiar_estado_plantilla(
-            evaluacion_id,
-            solicitud.estado,
-        )
-
-        if not resultado:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontró la plantilla de autoevaluación.",
-            )
-
-        return {
-            "mensaje": (
-                "Autoevaluación habilitada correctamente."
-                if solicitud.estado
-                else "Autoevaluación deshabilitada correctamente."
-            ),
-            "evaluacion_id": resultado["evaluacion_id"],
-            "estado": resultado["estado"],
-            "periodo_id": resultado["periodo_id"],
-        }
-
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(
-            "Error cambiando estado de plantilla %s",
-            evaluacion_id,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="No fue posible cambiar el estado de la autoevaluación.",
-        )
-
-
 @router.get("/")
 def listar_evaluaciones(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
-    """
-    Los roles administrativos consultan todas las evaluaciones.
-    Los demás usuarios solo consultan las publicadas para docentes.
-    """
+    """Todos los usuarios autenticados pueden consultar las evaluaciones."""
     try:
-        evaluaciones = repo.obtener_todos()
-
-        if es_administrador(usuario.rol):
-            return evaluaciones
-
-        return [
-            evaluacion
-            for evaluacion in evaluaciones
-            if es_visible(evaluacion)
-        ]
+        return repo.obtener_todos()
 
     except Exception:
         logger.exception(
-            "Error listando evaluaciones para usuario %s",
+            "Error listando evaluaciones para el usuario %s",
             usuario.usuario_id,
         )
         raise HTTPException(
@@ -156,67 +64,12 @@ def listar_evaluaciones(
         )
 
 
-@router.put("/{evaluacion_id}/visibilidad")
-def cambiar_visibilidad_evaluacion(
-    evaluacion_id: int,
-    solicitud: VisibilidadEvaluacion,
-    _jefe: UsuarioActual = Depends(requiere_jefe),
-):
-    """
-    Publica u oculta una evaluación para los docentes.
-    Requiere que el repositorio implemente cambiar_visibilidad().
-    """
-    try:
-        resultado = repo.cambiar_visibilidad(
-            evaluacion_id,
-            solicitud.visible_docentes,
-        )
-
-        if not resultado:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontró la evaluación.",
-            )
-
-        return {
-            "mensaje": (
-                "Evaluación publicada para los docentes."
-                if solicitud.visible_docentes
-                else "Evaluación oculta para los docentes."
-            ),
-            "evaluacion_id": evaluacion_id,
-            "visible_docentes": solicitud.visible_docentes,
-        }
-
-    except HTTPException:
-        raise
-    except AttributeError:
-        logger.exception(
-            "Falta implementar cambiar_visibilidad en EvaluacionRepository"
-        )
-        raise HTTPException(
-            status_code=501,
-            detail=(
-                "Falta implementar el método cambiar_visibilidad "
-                "en EvaluacionRepository."
-            ),
-        )
-    except Exception:
-        logger.exception(
-            "Error cambiando visibilidad de evaluación %s",
-            evaluacion_id,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="No fue posible cambiar la visibilidad.",
-        )
-
-
 @router.post("/")
 def crear_evaluacion(
     evaluacion: Evaluacion,
     _jefe: UsuarioActual = Depends(requiere_jefe),
 ):
+    """Crea una evaluación. Requiere permisos de jefe."""
     try:
         nuevo_id = repo.crear(evaluacion)
 
@@ -228,11 +81,12 @@ def crear_evaluacion(
 
         return {
             "mensaje": "Evaluación registrada exitosamente.",
-            "id": nuevo_id,
+            "evaluacion_id": nuevo_id,
         }
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception("Error al crear una evaluación")
         raise HTTPException(
@@ -246,19 +100,11 @@ def obtener_evaluacion(
     evaluacion_id: int,
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
+    """Consulta una evaluación por su identificador."""
     try:
         evaluacion = repo.obtener_por_id(evaluacion_id)
 
-        if not evaluacion:
-            raise HTTPException(
-                status_code=404,
-                detail="Evaluación no encontrada.",
-            )
-
-        if es_administrador(usuario.rol):
-            return evaluacion
-
-        if not es_visible(evaluacion):
+        if evaluacion is None:
             raise HTTPException(
                 status_code=404,
                 detail="Evaluación no encontrada.",
@@ -268,10 +114,12 @@ def obtener_evaluacion(
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception(
-            "Error consultando evaluación %s",
+            "Error consultando evaluación %s para usuario %s",
             evaluacion_id,
+            usuario.usuario_id,
         )
         raise HTTPException(
             status_code=500,
@@ -285,20 +133,23 @@ def asignar_evaluacion(
     asignacion: AsignacionEvaluacion,
     _jefe: UsuarioActual = Depends(requiere_jefe),
 ):
+    """Asigna una evaluación existente a una carga docente."""
     try:
-        if not repo.obtener_por_id(evaluacion_id):
+        if repo.obtener_por_id(evaluacion_id) is None:
             raise HTTPException(
                 status_code=404,
                 detail="Evaluación no encontrada.",
             )
 
-        if not repo.asignar_carga(
+        resultado = repo.asignar_carga(
             evaluacion_id,
             asignacion.carga_id,
-        ):
+        )
+
+        if not resultado:
             raise HTTPException(
                 status_code=404,
-                detail="No se encontró la carga docente indicada.",
+                detail="No se encontró la carga docente activa indicada.",
             )
 
         return {
@@ -309,6 +160,7 @@ def asignar_evaluacion(
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception(
             "Error asignando evaluación %s a carga %s",
@@ -327,6 +179,7 @@ def actualizar_evaluacion(
     evaluacion: Evaluacion,
     _jefe: UsuarioActual = Depends(requiere_jefe),
 ):
+    """Actualiza una evaluación existente."""
     try:
         if not repo.actualizar(evaluacion_id, evaluacion):
             raise HTTPException(
@@ -334,10 +187,14 @@ def actualizar_evaluacion(
                 detail="Evaluación no encontrada.",
             )
 
-        return {"mensaje": "Evaluación actualizada correctamente."}
+        return {
+            "mensaje": "Evaluación actualizada correctamente.",
+            "evaluacion_id": evaluacion_id,
+        }
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception(
             "Error actualizando evaluación %s",
@@ -354,6 +211,7 @@ def eliminar_evaluacion(
     evaluacion_id: int,
     _jefe: UsuarioActual = Depends(requiere_jefe),
 ):
+    """Elimina una evaluación existente."""
     try:
         if not repo.eliminar(evaluacion_id):
             raise HTTPException(
@@ -361,10 +219,14 @@ def eliminar_evaluacion(
                 detail="Evaluación no encontrada.",
             )
 
-        return {"mensaje": "Evaluación eliminada correctamente."}
+        return {
+            "mensaje": "Evaluación eliminada correctamente.",
+            "evaluacion_id": evaluacion_id,
+        }
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception(
             "Error eliminando evaluación %s",
@@ -372,5 +234,8 @@ def eliminar_evaluacion(
         )
         raise HTTPException(
             status_code=500,
-            detail="No fue posible eliminar la evaluación.",
+            detail=(
+                "No fue posible eliminar la evaluación. "
+                "Verifica si tiene respuestas o preguntas relacionadas."
+            ),
         )

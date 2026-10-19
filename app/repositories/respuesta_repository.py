@@ -15,7 +15,7 @@ class RespuestaRepository:
 
     @staticmethod
     def _valor(fila, columna, indice):
-        """Compatible con cursores que devuelven diccionarios o tuplas."""
+        """Compatible con resultados en formato diccionario o tupla."""
         if fila is None:
             return None
 
@@ -124,7 +124,7 @@ class RespuestaRepository:
 
         except Exception:
             logger.exception(
-                "Error al consultar la respuesta %s",
+                "Error consultando respuesta %s",
                 respuesta_id,
             )
             raise
@@ -138,10 +138,7 @@ class RespuestaRepository:
         usuario_id: int,
         evaluacion_id: int,
     ):
-        """
-        Devuelve la respuesta más reciente del usuario para una evaluación.
-        Si nunca respondió, devuelve None.
-        """
+        """Devuelve la respuesta más reciente del usuario para una evaluación."""
         conn = None
 
         try:
@@ -189,10 +186,8 @@ class RespuestaRepository:
 
     def obtener_estado_evaluaciones_usuario(self, usuario_id: int):
         """
-        Devuelve el estado de cada evaluación del usuario.
-
-        Una evaluación se considera completada cuando existen cinco
-        respuestas en su último intento.
+        Devuelve el total de respuestas por evaluación.
+        Una evaluación se considera completada al tener cinco respuestas.
         """
         conn = None
 
@@ -201,44 +196,19 @@ class RespuestaRepository:
             cursor = conn.cursor()
 
             cursor.execute("""
-                WITH intentos AS (
-                    SELECT
-                        pe.evaluacion_id,
-                        r.usuario_id,
-                        r.created_at,
-                        r.respuesta_id,
-                        COUNT(*) OVER (
-                            PARTITION BY
-                                pe.evaluacion_id,
-                                r.usuario_id,
-                                r.created_at
-                        ) AS respuestas_en_mismo_instante
-                    FROM respuestas r
-                    JOIN preguntas_evaluacion pe
-                        ON pe.pregunta_evaluacion_id =
-                           r.pregunta_evaluacion_id
-                    WHERE r.usuario_id = %s
-                ),
-                resumen AS (
-                    SELECT
-                        evaluacion_id,
-                        usuario_id,
-                        COUNT(*) AS total_respuestas
-                    FROM respuestas r
-                    JOIN preguntas_evaluacion pe
-                        ON pe.pregunta_evaluacion_id =
-                           r.pregunta_evaluacion_id
-                    WHERE r.usuario_id = %s
-                    GROUP BY evaluacion_id, usuario_id
-                )
                 SELECT
-                    evaluacion_id,
-                    usuario_id,
-                    total_respuestas,
-                    (total_respuestas >= 5) AS completada
-                FROM resumen
-                ORDER BY evaluacion_id;
-            """, (usuario_id, usuario_id))
+                    pe.evaluacion_id,
+                    r.usuario_id,
+                    COUNT(*) AS total_respuestas,
+                    (COUNT(*) >= 5) AS completada
+                FROM respuestas r
+                JOIN preguntas_evaluacion pe
+                    ON pe.pregunta_evaluacion_id =
+                       r.pregunta_evaluacion_id
+                WHERE r.usuario_id = %s
+                GROUP BY pe.evaluacion_id, r.usuario_id
+                ORDER BY pe.evaluacion_id;
+            """, (usuario_id,))
 
             return cursor.fetchall()
 
@@ -254,7 +224,7 @@ class RespuestaRepository:
                 conn.close()
 
     def _validar_usuario(self, cursor, usuario_id: int):
-        """Verifica que el usuario exista y esté activo."""
+        """Comprueba que el usuario exista y esté activo."""
 
         cursor.execute("""
             SELECT usuario_id
@@ -268,10 +238,9 @@ class RespuestaRepository:
 
     def _validar_relaciones(self, cursor, respuestas):
         """
-        Comprueba que las respuestas correspondan a preguntas activas
-        de una misma evaluación. Devuelve evaluacion_id.
+        Verifica que las preguntas estén activas, que coincidan sus IDs
+        y que todas pertenezcan a una sola evaluación.
         """
-
         if not respuestas:
             raise ValueError("Debes proporcionar respuestas.")
 
@@ -285,8 +254,7 @@ class RespuestaRepository:
         ]
 
         if any(
-            valor is None
-            or isinstance(valor, bool)
+            isinstance(valor, bool)
             or not isinstance(valor, int)
             or valor <= 0
             for valor in relaciones + preguntas
@@ -330,13 +298,6 @@ class RespuestaRepository:
             for fila in filas
         }
 
-        evaluacion_ids = {dato[2] for dato in datos}
-
-        if None in evaluacion_ids or len(evaluacion_ids) != 1:
-            raise ValueError(
-                "Todas las preguntas deben pertenecer a la misma evaluación."
-            )
-
         esperadas = {
             (r.pregunta_evaluacion_id, r.pregunta_id)
             for r in respuestas
@@ -346,6 +307,13 @@ class RespuestaRepository:
         if esperadas != encontradas:
             raise ValueError(
                 "Las preguntas enviadas no coinciden con sus relaciones."
+            )
+
+        evaluacion_ids = {dato[2] for dato in datos}
+
+        if None in evaluacion_ids or len(evaluacion_ids) != 1:
+            raise ValueError(
+                "Todas las preguntas deben pertenecer a la misma evaluación."
             )
 
         for respuesta in respuestas:
@@ -362,27 +330,53 @@ class RespuestaRepository:
 
         evaluacion_id = next(iter(evaluacion_ids))
 
-        if len(respuestas) == 5:
-            cursor.execute("""
-                SELECT COUNT(*) AS total
-                FROM preguntas_evaluacion pe
-                JOIN preguntas p
-                    ON p.pregunta_id = pe.pregunta_id
-                WHERE pe.evaluacion_id = %s
-                  AND pe.estado = TRUE
-                  AND p.estado = TRUE;
-            """, (evaluacion_id,))
+        cursor.execute("""
+            SELECT COUNT(*) AS total
+            FROM preguntas_evaluacion pe
+            JOIN preguntas p
+                ON p.pregunta_id = pe.pregunta_id
+            WHERE pe.evaluacion_id = %s
+              AND pe.estado = TRUE
+              AND p.estado = TRUE;
+        """, (evaluacion_id,))
 
-            fila = cursor.fetchone()
-            total = int(self._valor(fila, "total", 0) or 0)
+        fila = cursor.fetchone()
+        total = int(self._valor(fila, "total", 0) or 0)
 
-            if total != 5:
-                raise ValueError(
-                    "La evaluación debe tener exactamente "
-                    "cinco preguntas activas."
-                )
+        if total != 5 or len(respuestas) != 5:
+            raise ValueError(
+                "La evaluación debe tener exactamente cinco preguntas activas."
+            )
 
         return evaluacion_id
+
+    def _validar_evaluacion_docente(
+        self,
+        cursor,
+        evaluacion_id: int,
+        usuario_id: int,
+    ):
+        """
+        Valida que la evaluación esté activa y asociada a una carga
+        docente activa del usuario autenticado.
+        """
+        cursor.execute("""
+            SELECT e.evaluacion_id
+            FROM evaluaciones e
+            JOIN carga_docente cd
+                ON cd.carga_id = e.carga_id
+            WHERE e.evaluacion_id = %s
+              AND e.estado = TRUE
+              AND cd.user_id = %s
+              AND cd.estado = TRUE
+            LIMIT 1;
+        """, (evaluacion_id, usuario_id))
+
+        if cursor.fetchone() is None:
+            raise ValueError(
+                "No puedes responder esta evaluación porque no pertenece "
+                "a una carga docente activa tuya o está inactiva."
+            )
 
     def crear(self, respuesta: Respuesta):
         conn = None
@@ -395,7 +389,17 @@ class RespuestaRepository:
             cursor = conn.cursor()
 
             self._validar_usuario(cursor, respuesta.usuario_id)
-            self._validar_relaciones(cursor, [respuesta])
+
+            evaluacion_id = self._validar_relaciones(
+                cursor,
+                [respuesta],
+            )
+
+            self._validar_evaluacion_docente(
+                cursor,
+                evaluacion_id,
+                respuesta.usuario_id,
+            )
 
             cursor.execute("""
                 INSERT INTO respuestas (
@@ -440,11 +444,8 @@ class RespuestaRepository:
         evaluacion_id: Optional[int] = None,
     ):
         """
-        Registra cinco respuestas dentro de una transacción.
-
-        Permite varios envíos de una misma evaluación. Cada envío
-        se conserva; el frontend debe consultar el último intento
-        para mostrar el estado actualizado.
+        Registra un intento de cinco respuestas en una sola transacción.
+        Se permiten nuevos intentos y se conserva cada envío.
         """
         conn = None
 
@@ -466,49 +467,33 @@ class RespuestaRepository:
 
             self._validar_usuario(cursor, usuario_id)
 
-            evaluacion_id_preguntas = self._validar_relaciones(
+            evaluacion_real_id = self._validar_relaciones(
                 cursor,
                 respuestas,
             )
 
             if (
                 evaluacion_id is not None
-                and evaluacion_id != evaluacion_id_preguntas
+                and evaluacion_id != evaluacion_real_id
             ):
                 raise ValueError(
                     "La evaluación indicada no coincide con las preguntas."
                 )
 
-            evaluacion_id = evaluacion_id_preguntas
+            evaluacion_id = evaluacion_real_id
 
-            # Serializa envíos simultáneos del mismo usuario y evaluación.
+            # Evita que dos envíos del mismo usuario y evaluación
+            # se procesen simultáneamente.
             cursor.execute(
                 "SELECT pg_advisory_xact_lock(%s, %s);",
                 (usuario_id, evaluacion_id),
             )
 
-            # Comprueba que la evaluación esté activa y corresponda
-            # a una carga activa del docente.
-            cursor.execute("""
-                SELECT e.evaluacion_id
-                FROM evaluaciones e
-                WHERE e.evaluacion_id = %s
-                  AND e.estado = TRUE
-                  AND EXISTS (
-                      SELECT 1
-                      FROM carga_docente cd
-                      WHERE cd.carga_id = e.carga_id
-                        AND cd.user_id = %s
-                        AND cd.estado = TRUE
-                  )
-                LIMIT 1;
-            """, (evaluacion_id, usuario_id))
-
-            if cursor.fetchone() is None:
-                raise ValueError(
-                    "La evaluación está inactiva o no está asignada "
-                    "a una carga docente activa del usuario."
-                )
+            self._validar_evaluacion_docente(
+                cursor,
+                evaluacion_id,
+                usuario_id,
+            )
 
             comentario_general = (
                 comentario.strip()[:500]
@@ -519,10 +504,6 @@ class RespuestaRepository:
             ids_creados = []
 
             for indice, respuesta in enumerate(respuestas):
-                comentario_respuesta = (
-                    comentario_general if indice == 0 else None
-                )
-
                 cursor.execute("""
                     INSERT INTO respuestas (
                         pregunta_evaluacion_id,
@@ -539,7 +520,7 @@ class RespuestaRepository:
                     respuesta.pregunta_id,
                     usuario_id,
                     respuesta.puntaje,
-                    comentario_respuesta,
+                    comentario_general if indice == 0 else None,
                     respuesta.estado,
                 ))
 
@@ -598,7 +579,17 @@ class RespuestaRepository:
             cursor = conn.cursor()
 
             self._validar_usuario(cursor, respuesta.usuario_id)
-            self._validar_relaciones(cursor, [respuesta])
+
+            evaluacion_id = self._validar_relaciones(
+                cursor,
+                [respuesta],
+            )
+
+            self._validar_evaluacion_docente(
+                cursor,
+                evaluacion_id,
+                respuesta.usuario_id,
+            )
 
             cursor.execute("""
                 UPDATE respuestas
