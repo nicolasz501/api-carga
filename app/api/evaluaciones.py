@@ -1,53 +1,20 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from app.models.Evaluacion import Evaluacion
 from app.repositories.evaluacion_repository import EvaluacionRepository
+from app.routes.usuario_routes import (
+    UsuarioActual,
+    es_administrador,
+    get_usuario_actual,
+    requiere_jefe,
+)
 
 
 logger = logging.getLogger(__name__)
 
-# ----------------------------------------------------------------------
-# Seguridad (incluida aquí para no agregar archivos nuevos al proyecto).
-# Si el proyecto ya tiene una forma de obtener el usuario autenticado,
-# reemplaza el cuerpo de get_usuario_actual por esa lógica.
-# ----------------------------------------------------------------------
-# Debe coincidir con roles.nombre_rol en la base de datos.
-ROL_JEFE = "JEFE_DEPARTAMENTO"
-
-_bearer = HTTPBearer(auto_error=False)
-
-
-class UsuarioActual(BaseModel):
-    usuario_id: int  # usuarios.id_usuario
-    rol: str         # roles.nombre_rol
-
-
-def get_usuario_actual(
-    credenciales: HTTPAuthorizationCredentials = Depends(_bearer),
-) -> UsuarioActual:
-    if credenciales is None:
-        raise HTTPException(status_code=401, detail="No autenticado.")
-
-    token = credenciales.credentials
-
-    # TODO: validar el token con el mecanismo de login actual y devolver
-    # UsuarioActual(usuario_id=..., rol=...).
-    raise HTTPException(
-        status_code=501,
-        detail="get_usuario_actual aún no está implementado."
-    )
-
-
-def requiere_jefe(
-    usuario: UsuarioActual = Depends(get_usuario_actual),
-) -> UsuarioActual:
-    if usuario.rol != ROL_JEFE:
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
-    return usuario
 
 router = APIRouter(
     prefix="/evaluaciones",
@@ -167,7 +134,7 @@ def obtener_evaluacion(
 
         # Mismo 404 si no existe o si no es suya: no revela su existencia.
         if not evaluacion or (
-            usuario.rol != ROL_JEFE
+            not es_administrador(usuario.rol)
             and not repo.pertenece_a_docente(
                 evaluacion_id, usuario.usuario_id
             )
