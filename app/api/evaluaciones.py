@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 from app.models.Evaluacion import Evaluacion
 from app.repositories.evaluacion_repository import EvaluacionRepository
-from app.routes.usuario_routes import (
+from app.api.usuarios import (
     UsuarioActual,
     es_administrador,
     get_usuario_actual,
