@@ -43,54 +43,65 @@ class EvaluacionRepository:
             if conn:
                 conn.close()
 
-    def obtener_para_docente(self, usuario_id: int):
-        """
-        Devuelve evaluaciones activas asociadas a las cargas del docente
-        y excluye aquellas que ya tienen todas sus preguntas respondidas.
-        """
-        conn = None
-        try:
-            conn = self.db.get_connection()
-            cursor = conn.cursor()
+    
+def obtener_para_docente(self, usuario_id: int):
+    """
+    Devuelve las evaluaciones activas asignadas al docente,
+    siempre que tengan preguntas activas y aún no hayan sido
+    respondidas completamente por ese docente.
+    """
+    conn = None
 
-            cursor.execute("""
-                SELECT e.*
-                FROM evaluaciones e
-                INNER JOIN carga_docente cd
-                    ON cd.carga_id = e.carga_id
-                WHERE cd.user_id = %s
-                  AND e.estado = TRUE
-                  AND EXISTS (
-                      SELECT 1
-                      FROM preguntas_evaluacion pe
-                      WHERE pe.evaluacion_id = e.evaluacion_id
-                        AND pe.estado = TRUE
-                  )
-                  AND NOT EXISTS (
-                      SELECT 1
-                      FROM preguntas_evaluacion pe
-                      WHERE pe.evaluacion_id = e.evaluacion_id
-                        AND pe.estado = TRUE
-                        AND NOT EXISTS (
-                            SELECT 1
-                            FROM respuestas r
-                            WHERE r.pregunta_evaluacion_id =
-                                  pe.pregunta_evaluacion_id
-                              AND r.usuario_id = %s
-                              AND r.estado = TRUE
-                        )
-                  )
-                ORDER BY e.evaluacion_id ASC;
-            """, (usuario_id, usuario_id))
+    try:
+        conn = self.db.get_connection()
+        cursor = conn.cursor()
 
-            return cursor.fetchall()
+        cursor.execute("""
+            SELECT e.*
+            FROM evaluaciones e
+            INNER JOIN carga_docente cd
+                ON cd.carga_id = e.carga_id
+            WHERE cd.user_id = %s
+              AND e.estado = TRUE
 
-        except Exception as e:
-            print(f"Error al consultar evaluaciones del docente: {e}")
-            raise
-        finally:
-            if conn:
-                conn.close()
+              -- La evaluación debe tener preguntas activas.
+              AND EXISTS (
+                  SELECT 1
+                  FROM preguntas_evaluacion pe
+                  WHERE pe.evaluacion_id = e.evaluacion_id
+                    AND pe.estado = TRUE
+              )
+
+              -- Mostrar la evaluación si existe al menos
+              -- una pregunta activa que aún no ha respondido.
+              AND EXISTS (
+                  SELECT 1
+                  FROM preguntas_evaluacion pe
+                  WHERE pe.evaluacion_id = e.evaluacion_id
+                    AND pe.estado = TRUE
+                    AND NOT EXISTS (
+                        SELECT 1
+                        FROM respuestas r
+                        WHERE r.pregunta_evaluacion_id =
+                              pe.pregunta_evaluacion_id
+                          AND r.usuario_id = %s
+                          AND r.estado = TRUE
+                    )
+              )
+
+            ORDER BY e.evaluacion_id ASC;
+        """, (usuario_id, usuario_id))
+
+        return cursor.fetchall()
+
+    except Exception as e:
+        print(f"Error al consultar evaluaciones del docente: {e}")
+        raise
+
+    finally:
+        if conn:
+            conn.close()
+
 
     def crear(self, evaluacion: Evaluacion):
         conn = None
