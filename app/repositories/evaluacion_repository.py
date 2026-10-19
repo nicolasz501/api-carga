@@ -144,14 +144,25 @@ class EvaluacionRepository:
             cursor.execute("""
                 INSERT INTO evaluaciones (
                     carga_id,
+                    periodo_id,
                     tipo_evaluacion,
                     titulo,
                     fecha_envio,
                     estado
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (
+                    %s,
+                    COALESCE(
+                        %s,
+                        (SELECT periodo_id FROM carga_docente
+                         WHERE carga_id = %s)
+                    ),
+                    %s, %s, %s, %s
+                )
                 RETURNING evaluacion_id;
             """, (
+                evaluacion.carga_id,
+                evaluacion.periodo_id,
                 evaluacion.carga_id,
                 evaluacion.tipo_evaluacion,
                 evaluacion.titulo,
@@ -234,12 +245,12 @@ class EvaluacionRepository:
             cursor.execute("""
                 SELECT
                     e.evaluacion_id,
-                    cd.periodo_id,
+                    COALESCE(e.periodo_id, cd.periodo_id) AS periodo_id,
                     e.tipo_evaluacion,
                     e.titulo,
                     e.fecha_envio
                 FROM evaluaciones e
-                INNER JOIN carga_docente cd
+                LEFT JOIN carga_docente cd
                     ON cd.carga_id = e.carga_id
                 WHERE e.evaluacion_id = %s
                   AND e.estado = TRUE;
@@ -313,7 +324,7 @@ class EvaluacionRepository:
                     INNER JOIN carga_docente cd
                         ON cd.carga_id = e.carga_id
                     WHERE cd.user_id = %s
-                      AND cd.periodo_id = %s
+                      AND COALESCE(e.periodo_id, cd.periodo_id) = %s
                       AND e.tipo_evaluacion = 'AUTOEVALUACION'
                       AND e.estado = TRUE
                       AND e.evaluacion_id <> %s
@@ -333,15 +344,17 @@ class EvaluacionRepository:
                 cursor.execute("""
                     INSERT INTO evaluaciones (
                         carga_id,
+                        periodo_id,
                         tipo_evaluacion,
                         titulo,
                         fecha_envio,
                         estado
                     )
-                    VALUES (%s, %s, %s, %s, TRUE)
+                    VALUES (%s, %s, %s, %s, %s, TRUE)
                     RETURNING evaluacion_id;
                 """, (
                     carga_id,
+                    periodo_id,
                     "AUTOEVALUACION",
                     "Autoevaluación individual",
                     fecha_envio
@@ -355,15 +368,18 @@ class EvaluacionRepository:
                     INSERT INTO preguntas_evaluacion (
                         evaluacion_id,
                         pregunta_id,
+                        numero_orden,
                         estado
                     )
                     SELECT
                         %s,
                         pregunta_id,
+                        numero_orden,
                         TRUE
                     FROM preguntas_evaluacion
                     WHERE evaluacion_id = %s
-                      AND estado = TRUE;
+                      AND estado = TRUE
+                    ORDER BY pregunta_evaluacion_id ASC;
                 """, (nuevo_id, plantilla_evaluacion_id))
 
                 creadas += 1
@@ -436,6 +452,7 @@ class EvaluacionRepository:
             cursor.execute("""
                 UPDATE evaluaciones
                 SET carga_id = %s,
+                    periodo_id = COALESCE(%s, periodo_id),
                     tipo_evaluacion = %s,
                     titulo = %s,
                     fecha_envio = %s,
@@ -444,6 +461,7 @@ class EvaluacionRepository:
                 RETURNING evaluacion_id;
             """, (
                 evaluacion.carga_id,
+                evaluacion.periodo_id,
                 evaluacion.tipo_evaluacion,
                 evaluacion.titulo,
                 evaluacion.fecha_envio,
