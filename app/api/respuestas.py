@@ -33,7 +33,7 @@ class RespuestasLote(BaseModel):
 
     comentario: Optional[str] = Field(
         default=None,
-        max_length=2000
+        max_length=500
     )
 
     @model_validator(mode="after")
@@ -47,14 +47,12 @@ class RespuestasLote(BaseModel):
 
         if len(set(relacion_ids)) != 5:
             raise ValueError(
-                "Las cinco respuestas deben tener relaciones "
-                "de pregunta diferentes."
+                "Las cinco respuestas deben tener preguntas diferentes."
             )
 
         if len(set(pregunta_ids)) != 5:
             raise ValueError(
-                "Las cinco respuestas deben corresponder "
-                "a preguntas diferentes."
+                "No puedes responder dos veces la misma pregunta."
             )
 
         return self
@@ -80,14 +78,16 @@ def crear_respuestas_lote(datos: RespuestasLote):
         }
 
     except ValueError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=str(e)
-        )
+        mensaje = str(e)
+        status = 409 if (
+            "ya respondió" in mensaje.lower()
+            or "ya tiene respuestas" in mensaje.lower()
+        ) else 422
+
+        raise HTTPException(status_code=status, detail=mensaje)
 
     except Exception as e:
         print(f"Error en POST /respuestas/lote: {e}")
-
         raise HTTPException(
             status_code=500,
             detail="No se pudieron registrar las respuestas."
@@ -98,7 +98,6 @@ def crear_respuestas_lote(datos: RespuestasLote):
 def listar_respuestas():
     try:
         return repo.obtener_todos()
-
     except Exception as e:
         print(f"Error al listar respuestas: {e}")
         raise HTTPException(
@@ -122,7 +121,6 @@ def obtener_respuesta(respuesta_id: int):
 
     except HTTPException:
         raise
-
     except Exception as e:
         print(f"Error al consultar respuesta: {e}")
         raise HTTPException(
@@ -133,26 +131,10 @@ def obtener_respuesta(respuesta_id: int):
 
 @router.post("/")
 def crear_respuesta(respuesta: Respuesta):
-    try:
-        nuevo_id = repo.crear(respuesta)
-
-        return {
-            "mensaje": "Respuesta registrada exitosamente.",
-            "id": nuevo_id
-        }
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=str(e)
-        )
-
-    except Exception as e:
-        print(f"Error al crear respuesta: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="No se pudo registrar la respuesta."
-        )
+    raise HTTPException(
+        status_code=405,
+        detail="Utiliza /respuestas/lote para registrar una evaluación completa."
+    )
 
 
 @router.put("/{respuesta_id}")
@@ -161,10 +143,7 @@ def actualizar_respuesta(
     respuesta: Respuesta
 ):
     try:
-        actualizado = repo.actualizar(
-            respuesta_id,
-            respuesta
-        )
+        actualizado = repo.actualizar(respuesta_id, respuesta)
 
         if not actualizado:
             raise HTTPException(
@@ -172,19 +151,12 @@ def actualizar_respuesta(
                 detail="Respuesta no encontrada."
             )
 
-        return {
-            "mensaje": "Respuesta actualizada correctamente."
-        }
+        return {"mensaje": "Respuesta actualizada correctamente."}
 
     except HTTPException:
         raise
-
     except ValueError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=str(e)
-        )
-
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         print(f"Error al actualizar respuesta: {e}")
         raise HTTPException(
@@ -204,13 +176,10 @@ def eliminar_respuesta(respuesta_id: int):
                 detail="Respuesta no encontrada."
             )
 
-        return {
-            "mensaje": "Respuesta eliminada correctamente."
-        }
+        return {"mensaje": "Respuesta eliminada correctamente."}
 
     except HTTPException:
         raise
-
     except Exception as e:
         print(f"Error al eliminar respuesta: {e}")
         raise HTTPException(
