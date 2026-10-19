@@ -52,58 +52,130 @@ class EvaluacionRepository:
                 conn.close()
 
     def obtener_para_docente(self, usuario_id: int):
-        """
-        Devuelve únicamente las autoevaluaciones activas asignadas al
-        docente, con preguntas activas pendientes por responder.
-
-        Las evaluaciones cuyo título comienza con [PLANTILLA]
-        nunca se muestran como asignaciones a los docentes.
-        """
+        """Devuelve plantillas activas del periodo del docente que aún tenga preguntas pendientes."""
         conn = None
         try:
             conn = self.db.get_connection()
             cursor = conn.cursor()
-
             cursor.execute("""
-                SELECT DISTINCT e.*
-                FROM evaluaciones e
+                WITH plantillas AS (
+                    SELECT
+                        e.evaluacion_id,
+                        e.carga_id,
+                        COALESCE(e.periodo_id, cd_plantilla.periodo_id) AS periodo_efectivo,
+                        e.tipo_evaluacion,
+                        e.titulo,
+                        e.fecha_envio,
+                        e.estado
+                    FROM evaluaciones e
+                    LEFT JOIN carga_docente cd_plantilla
+                        ON cd_plantilla.carga_id = e.carga_id
+                    WHERE e.estado = TRUE
+                      AND UPPER(e.tipo_evaluacion) = 'AUTOEVALUACION'
+                      AND COALESCE(e.titulo, '') ILIKE '[PLANTILLA]%%'
+                )
+                SELECT DISTINCT
+                    p.evaluacion_id,
+                    p.carga_id,
+                    p.periodo_efectivo AS periodo_id,
+                    p.tipo_evaluacion,
+                    p.titulo,
+                    p.fecha_envio,
+                    p.estado
+                FROM plantillas p
                 INNER JOIN carga_docente cd
-                    ON cd.carga_id = e.carga_id
+                    ON cd.periodo_id = p.periodo_efectivo
                 WHERE cd.user_id = %s
-                  AND e.estado = TRUE
-                  AND UPPER(e.tipo_evaluacion) = 'AUTOEVALUACION'
-
-                  -- Excluir modelos que no son asignaciones.
-                  AND COALESCE(e.titulo, '') NOT ILIKE '[PLANTILLA]%%'
-
-                  -- Debe quedar al menos una pregunta activa sin responder.
+                  AND cd.estado = TRUE
                   AND EXISTS (
                       SELECT 1
                       FROM preguntas_evaluacion pe
-                      WHERE pe.evaluacion_id = e.evaluacion_id
+                      WHERE pe.evaluacion_id = p.evaluacion_id
+                        AND pe.estado = TRUE
+                  )
+                  AND EXISTS (
+                      SELECT 1
+                      FROM preguntas_evaluacion pe
+                      WHERE pe.evaluacion_id = p.evaluacion_id
                         AND pe.estado = TRUE
                         AND NOT EXISTS (
                             SELECT 1
                             FROM respuestas r
-                            WHERE r.pregunta_evaluacion_id =
-                                  pe.pregunta_evaluacion_id
+                            WHERE r.pregunta_evaluacion_id = pe.pregunta_evaluacion_id
                               AND r.usuario_id = %s
                               AND r.estado = TRUE
                         )
                   )
-
-                ORDER BY e.evaluacion_id ASC;
+                ORDER BY p.evaluacion_id ASC;
             """, (usuario_id, usuario_id))
-
             return cursor.fetchall()
-
-        except Exception as e:
-            print(
-                f"Error al consultar evaluaciones del docente "
-                f"{usuario_id}: {e}"
-            )
+        except Exception:
+            print(f"Error al consultar autoevaluaciones del docente {usuario_id}")
             raise
+        finally:
+            if conn:
+                conn.close()
 
+    def listar_plantillas_autoevaluacion(self):
+        """Lista las plantillas institucionales para el panel administrativo, activas o inactivas."""
+        conn = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    e.evaluacion_id,
+                    e.carga_id,
+                    COALESCE(e.periodo_id, cd.periodo_id) AS periodo_id,
+                    e.tipo_evaluacion,
+                    e.titulo,
+                    e.fecha_envio,
+                    e.estado,
+                    (SELECT COUNT(*)
+                     FROM preguntas_evaluacion pe
+                     WHERE pe.evaluacion_id = e.evaluacion_id
+                       AND pe.estado = TRUE) AS total_preguntas
+                FROM evaluaciones e
+                LEFT JOIN carga_docente cd ON cd.carga_id = e.carga_id
+                WHERE UPPER(e.tipo_evaluacion) = 'AUTOEVALUACION'
+                  AND COALESCE(e.titulo, '') ILIKE '[PLANTILLA]%%'
+                ORDER BY COALESCE(e.periodo_id, cd.periodo_id) DESC,
+                         e.evaluacion_id DESC;
+            """)
+            return cursor.fetchall()
+        except Exception:
+            print("Error al listar plantillas de autoevaluación")
+            raise
+        finally:
+            if conn:
+                conn.close()
+
+    def cambiar_estado_plantilla(self, evaluacion_id: int, estado: bool):
+        """Habilita/deshabilita una plantilla sin crear copias ni registros por docente."""
+        conn = None
+        try:
+            conn = self.db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE evaluaciones
+                SET estado = %s
+                WHERE evaluacion_id = %s
+                  AND UPPER(tipo_evaluacion) = 'AUTOEVALUACION'
+                  AND COALESCE(titulo, '') ILIKE '[PLANTILLA]%%'
+                RETURNING evaluacion_id, estado,
+                          COALESCE(periodo_id,
+                              (SELECT cd.periodo_id
+                               FROM carga_docente cd
+                               WHERE cd.carga_id = evaluaciones.carga_id)) AS periodo_id;
+            """, (estado, evaluacion_id))
+            resultado = cursor.fetchone()
+            conn.commit()
+            return resultado
+        except Exception:
+            if conn:
+                conn.rollback()
+            print(f"Error al cambiar estado de plantilla {evaluacion_id}")
+            raise
         finally:
             if conn:
                 conn.close()
