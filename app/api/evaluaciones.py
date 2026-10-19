@@ -22,6 +22,10 @@ class AsignacionEvaluacion(BaseModel):
     carga_id: int = Field(gt=0)
 
 
+class AsignacionMasiva(BaseModel):
+    plantilla_evaluacion_id: int = Field(gt=0)
+
+
 @router.get("/")
 def listar_evaluaciones():
     try:
@@ -53,6 +57,32 @@ def listar_evaluaciones_docente(usuario_id: int):
         raise HTTPException(
             status_code=500,
             detail="No fue posible consultar las evaluaciones pendientes."
+        )
+
+
+@router.post("/asignar-todos")
+def asignar_autoevaluacion_todos(
+    solicitud: AsignacionMasiva
+):
+    try:
+        resultado = repo.asignar_autoevaluacion_a_todos(
+            solicitud.plantilla_evaluacion_id
+        )
+        return resultado
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    except Exception:
+        logger.exception(
+            "Error al asignar autoevaluaciones a todos los docentes"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="No fue posible asignar las autoevaluaciones."
         )
 
 
