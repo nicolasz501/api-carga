@@ -1,3 +1,4 @@
+
 from app.core.database import Database
 from app.models.Respuesta import Respuesta
 
@@ -6,6 +7,13 @@ class RespuestaRepository:
 
     def __init__(self):
         self.db = Database()
+
+    @staticmethod
+    def _valor(fila, columna, indice):
+        """Compatible con cursores que devuelven diccionarios o tuplas."""
+        if isinstance(fila, dict):
+            return fila[columna]
+        return fila[indice]
 
     def obtener_todos(self):
         conn = None
@@ -17,6 +25,7 @@ class RespuestaRepository:
             cursor.execute("""
                 SELECT
                     r.respuesta_id,
+                    r.pregunta_evaluacion_id,
                     r.pregunta_id,
                     r.usuario_id,
                     r.puntaje,
@@ -33,7 +42,7 @@ class RespuestaRepository:
                     ) AS nombre_evaluador,
                     u.correo,
                     p.texto_pregunta AS pregunta,
-                    p.evaluacion_id,
+                    pe.evaluacion_id,
                     e.titulo AS evaluacion,
                     e.tipo_evaluacion
                 FROM respuestas r
@@ -41,8 +50,11 @@ class RespuestaRepository:
                     ON u.usuario_id = r.usuario_id
                 LEFT JOIN preguntas p
                     ON p.pregunta_id = r.pregunta_id
+                LEFT JOIN preguntas_evaluacion pe
+                    ON pe.pregunta_evaluacion_id =
+                       r.pregunta_evaluacion_id
                 LEFT JOIN evaluaciones e
-                    ON e.evaluacion_id = p.evaluacion_id
+                    ON e.evaluacion_id = pe.evaluacion_id
                 ORDER BY r.respuesta_id ASC;
             """)
 
@@ -50,7 +62,7 @@ class RespuestaRepository:
 
         except Exception as e:
             print(f"Error al obtener respuestas: {e}")
-            return []
+            raise
 
         finally:
             if conn:
@@ -66,6 +78,7 @@ class RespuestaRepository:
             cursor.execute("""
                 SELECT
                     r.respuesta_id,
+                    r.pregunta_evaluacion_id,
                     r.pregunta_id,
                     r.usuario_id,
                     r.puntaje,
@@ -82,7 +95,7 @@ class RespuestaRepository:
                     ) AS nombre_evaluador,
                     u.correo,
                     p.texto_pregunta AS pregunta,
-                    p.evaluacion_id,
+                    pe.evaluacion_id,
                     e.titulo AS evaluacion,
                     e.tipo_evaluacion
                 FROM respuestas r
@@ -90,8 +103,11 @@ class RespuestaRepository:
                     ON u.usuario_id = r.usuario_id
                 LEFT JOIN preguntas p
                     ON p.pregunta_id = r.pregunta_id
+                LEFT JOIN preguntas_evaluacion pe
+                    ON pe.pregunta_evaluacion_id =
+                       r.pregunta_evaluacion_id
                 LEFT JOIN evaluaciones e
-                    ON e.evaluacion_id = p.evaluacion_id
+                    ON e.evaluacion_id = pe.evaluacion_id
                 WHERE r.respuesta_id = %s;
             """, (respuesta_id,))
 
@@ -99,11 +115,64 @@ class RespuestaRepository:
 
         except Exception as e:
             print(f"Error al obtener respuesta: {e}")
-            return None
+            raise
 
         finally:
             if conn:
                 conn.close()
+
+    def _validar_usuario(self, cursor, usuario_id: int):
+        cursor.execute("""
+            SELECT usuario_id
+            FROM usuarios
+            WHERE usuario_id = %s
+              AND estado = TRUE;
+        """, (usuario_id,))
+
+        if cursor.fetchone() is None:
+            raise ValueError("El usuario no existe o está inactivo.")
+
+    def _validar_relaciones(self, cursor, respuestas):
+        """
+        Comprueba que cada pregunta_evaluacion_id corresponda
+        al pregunta_id enviado y que ambos estén activos.
+        """
+        for respuesta in respuestas:
+            relacion_id = getattr(
+                respuesta, "pregunta_evaluacion_id", None
+            )
+            pregunta_id = getattr(respuesta, "pregunta_id", None)
+
+            if not relacion_id or not pregunta_id:
+                raise ValueError(
+                    "Cada respuesta debe incluir pregunta_evaluacion_id "
+                    "y pregunta_id."
+                )
+
+            cursor.execute("""
+                SELECT pe.pregunta_evaluacion_id
+                FROM preguntas_evaluacion pe
+                JOIN preguntas p
+                    ON p.pregunta_id = pe.pregunta_id
+                WHERE pe.pregunta_evaluacion_id = %s
+                  AND pe.pregunta_id = %s
+                  AND pe.estado = TRUE
+                  AND p.estado = TRUE;
+            """, (relacion_id, pregunta_id))
+
+            if cursor.fetchone() is None:
+                raise ValueError(
+                    f"La relación de pregunta {relacion_id} no existe, "
+                    "está inactiva o no corresponde a la pregunta "
+                    f"{pregunta_id}."
+                )
+
+            puntaje = respuesta.puntaje
+
+            if puntaje is None or not 1 <= puntaje <= 5:
+                raise ValueError(
+                    "Cada puntaje debe estar entre 1 y 5."
+                )
 
     def crear(self, respuesta: Respuesta):
         conn = None
@@ -117,17 +186,22 @@ class RespuestaRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
+            self._validar_usuario(cursor, respuesta.usuario_id)
+            self._validar_relaciones(cursor, [respuesta])
+
             cursor.execute("""
                 INSERT INTO respuestas (
+                    pregunta_evaluacion_id,
                     pregunta_id,
                     usuario_id,
                     puntaje,
                     comentario,
                     estado
                 )
-                VALUES (%s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 RETURNING respuesta_id;
             """, (
+                respuesta.pregunta_evaluacion_id,
                 respuesta.pregunta_id,
                 respuesta.usuario_id,
                 respuesta.puntaje,
@@ -135,23 +209,16 @@ class RespuestaRepository:
                 respuesta.estado
             ))
 
-            resultado = cursor.fetchone()
-            
-            # Compatibilidad segura (Diccionario o Tupla)
-            if isinstance(resultado, dict):
-                nuevo_id = resultado["respuesta_id"]
-            else:
-                nuevo_id = resultado[0]
+            fila = cursor.fetchone()
+            nuevo_id = self._valor(fila, "respuesta_id", 0)
 
             conn.commit()
             return nuevo_id
 
-        except Exception as e:
+        except Exception:
             if conn:
                 conn.rollback()
-
-            print(f"Error al crear respuesta: {e}")
-            return None
+            raise
 
         finally:
             if conn:
@@ -159,7 +226,7 @@ class RespuestaRepository:
 
     def crear_lote(
         self,
-        respuestas: list[Respuesta],
+        respuestas: list,
         usuario_id: int,
         comentario: str | None = None
     ):
@@ -171,10 +238,20 @@ class RespuestaRepository:
 
             if len(respuestas) != 5:
                 raise ValueError(
-                    "La evaluación debe contener exactamente 5 respuestas."
+                    "La evaluación debe contener exactamente "
+                    "5 respuestas."
                 )
 
+            relacion_ids = [
+                r.pregunta_evaluacion_id for r in respuestas
+            ]
             pregunta_ids = [r.pregunta_id for r in respuestas]
+
+            if len(set(relacion_ids)) != 5:
+                raise ValueError(
+                    "Las cinco respuestas deben tener relaciones "
+                    "de pregunta diferentes."
+                )
 
             if len(set(pregunta_ids)) != 5:
                 raise ValueError(
@@ -185,61 +262,35 @@ class RespuestaRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
-            # Verificar que el usuario exista.
-            cursor.execute("""
-                SELECT usuario_id
-                FROM usuarios
-                WHERE usuario_id = %s
-                  AND estado = TRUE;
-            """, (usuario_id,))
-
-            if cursor.fetchone() is None:
-                raise ValueError(
-                    "El usuario no existe o está inactivo."
-                )
-
-            # Verificar que las cinco preguntas existan y estén activas.
-            cursor.execute("""
-                SELECT pregunta_id
-                FROM preguntas
-                WHERE pregunta_id = ANY(%s)
-                  AND estado = TRUE;
-            """, (pregunta_ids,))
-
-            filas_preguntas = cursor.fetchall()
-            preguntas_validas = set()
-            for fila in filas_preguntas:
-                p_id = fila["pregunta_id"] if isinstance(fila, dict) else fila[0]
-                preguntas_validas.add(p_id)
-
-            if preguntas_validas != set(pregunta_ids):
-                raise ValueError(
-                    "Una o más preguntas no existen o están inactivas."
-                )
+            self._validar_usuario(cursor, usuario_id)
+            self._validar_relaciones(cursor, respuestas)
 
             ids_creados = []
+            comentario_general = (
+                comentario.strip()[:500]
+                if comentario and comentario.strip()
+                else None
+            )
 
             for indice, respuesta in enumerate(respuestas):
-                # Guardar el comentario general una sola vez en la primera respuesta.
+                # El comentario general se guarda una sola vez.
                 comentario_respuesta = (
-                    comentario.strip()[:500]
-                    if indice == 0
-                    and comentario
-                    and comentario.strip()
-                    else None
+                    comentario_general if indice == 0 else None
                 )
 
                 cursor.execute("""
                     INSERT INTO respuestas (
+                        pregunta_evaluacion_id,
                         pregunta_id,
                         usuario_id,
                         puntaje,
                         comentario,
                         estado
                     )
-                    VALUES (%s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     RETURNING respuesta_id;
                 """, (
+                    respuesta.pregunta_evaluacion_id,
                     respuesta.pregunta_id,
                     usuario_id,
                     respuesta.puntaje,
@@ -247,22 +298,18 @@ class RespuestaRepository:
                     respuesta.estado
                 ))
 
-                resultado = cursor.fetchone()
-                
-                # Obtener ID de forma segura (Diccionario o Tupla)
-                id_creado = resultado["respuesta_id"] if isinstance(resultado, dict) else resultado[0]
-                ids_creados.append(id_creado)
+                fila = cursor.fetchone()
+                ids_creados.append(
+                    self._valor(fila, "respuesta_id", 0)
+                )
 
-            # Confirmar las cinco respuestas en una transacción.
+            # Solo confirmar cuando las cinco inserciones funcionen.
             conn.commit()
-
             return ids_creados
 
-        except Exception as e:
+        except Exception:
             if conn:
                 conn.rollback()
-
-            print(f"Error al crear respuestas por lote: {e}")
             raise
 
         finally:
@@ -283,16 +330,14 @@ class RespuestaRepository:
             """, (respuesta_id,))
 
             eliminado = cursor.fetchone()
-
             conn.commit()
+
             return eliminado is not None
 
-        except Exception as e:
+        except Exception:
             if conn:
                 conn.rollback()
-
-            print(f"Error al eliminar respuesta: {e}")
-            return False
+            raise
 
         finally:
             if conn:
@@ -305,9 +350,13 @@ class RespuestaRepository:
             conn = self.db.get_connection()
             cursor = conn.cursor()
 
+            self._validar_usuario(cursor, respuesta.usuario_id)
+            self._validar_relaciones(cursor, [respuesta])
+
             cursor.execute("""
                 UPDATE respuestas
-                SET pregunta_id = %s,
+                SET pregunta_evaluacion_id = %s,
+                    pregunta_id = %s,
                     usuario_id = %s,
                     puntaje = %s,
                     comentario = %s,
@@ -316,6 +365,7 @@ class RespuestaRepository:
                 WHERE respuesta_id = %s
                 RETURNING respuesta_id;
             """, (
+                respuesta.pregunta_evaluacion_id,
                 respuesta.pregunta_id,
                 respuesta.usuario_id,
                 respuesta.puntaje,
@@ -325,16 +375,14 @@ class RespuestaRepository:
             ))
 
             actualizado = cursor.fetchone()
-
             conn.commit()
+
             return actualizado is not None
 
-        except Exception as e:
+        except Exception:
             if conn:
                 conn.rollback()
-
-            print(f"Error al actualizar respuesta: {e}")
-            return False
+            raise
 
         finally:
             if conn:
