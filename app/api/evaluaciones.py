@@ -30,14 +30,18 @@ class AsignacionEvaluacion(BaseModel):
 def mis_evaluaciones(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
+    """
+    Devuelve todas las evaluaciones activas.
+    No filtra por docente ni depende de carga_docente.
+    """
     try:
         return repo.obtener_para_docente(usuario.usuario_id)
 
     except Exception:
-        logger.exception("Error consultando evaluaciones del docente")
+        logger.exception("Error consultando evaluaciones disponibles")
         raise HTTPException(
             status_code=500,
-            detail="No fue posible consultar tus evaluaciones.",
+            detail="No fue posible consultar las evaluaciones disponibles.",
         )
 
 
@@ -119,6 +123,10 @@ def asignar_evaluacion(
     asignacion: AsignacionEvaluacion,
     _jefe: UsuarioActual = Depends(requiere_jefe),
 ):
+    """
+    Endpoint conservado para compatibilidad con el sistema actual.
+    No es necesario para mostrar las evaluaciones en mis-evaluaciones.
+    """
     try:
         if repo.obtener_por_id(evaluacion_id) is None:
             raise HTTPException(
@@ -132,11 +140,11 @@ def asignar_evaluacion(
         ):
             raise HTTPException(
                 status_code=404,
-                detail="Carga docente no encontrada o inactiva.",
+                detail="No fue posible actualizar la carga asociada.",
             )
 
         return {
-            "mensaje": "Evaluación asignada correctamente.",
+            "mensaje": "Evaluación actualizada correctamente.",
             "evaluacion_id": evaluacion_id,
             "carga_id": asignacion.carga_id,
         }
@@ -145,10 +153,10 @@ def asignar_evaluacion(
         raise
 
     except Exception:
-        logger.exception("Error asignando evaluación")
+        logger.exception("Error actualizando la carga de evaluación")
         raise HTTPException(
             status_code=500,
-            detail="No fue posible asignar la evaluación.",
+            detail="No fue posible actualizar la evaluación.",
         )
 
 

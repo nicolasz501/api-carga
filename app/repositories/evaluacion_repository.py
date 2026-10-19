@@ -47,6 +47,12 @@ class EvaluacionRepository:
                 conn.close()
 
     def obtener_para_docente(self, usuario_id: int):
+        """
+        Devuelve todas las evaluaciones activas.
+        No depende de carga_docente ni de usuario_id en evaluaciones.
+        El parámetro usuario_id se conserva para compatibilidad
+        con el router existente.
+        """
         conn = None
 
         try:
@@ -56,10 +62,9 @@ class EvaluacionRepository:
             cursor.execute("""
                 SELECT *
                 FROM evaluaciones
-                WHERE usuario_id = %s
-                  AND estado = TRUE
+                WHERE estado = TRUE
                 ORDER BY evaluacion_id ASC;
-            """, (usuario_id,))
+            """)
 
             return cursor.fetchall()
 
@@ -150,7 +155,8 @@ class EvaluacionRepository:
                     tipo_evaluacion = %s,
                     titulo = %s,
                     fecha_envio = %s,
-                    estado = %s
+                    estado = %s,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE evaluacion_id = %s
                 RETURNING evaluacion_id;
             """, (
