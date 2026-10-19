@@ -228,8 +228,9 @@ class EvaluacionRepository:
         plantilla_evaluacion_id: int
     ):
         """
-        Crea una sola autoevaluación por docente para el periodo
-        de la plantilla, reutilizando las tablas existentes.
+        Crea una sola autoevaluación por docente activo (con carga
+        activa) para el periodo de la plantilla, reutilizando las
+        tablas existentes.
 
         Excluye la plantilla al comprobar asignaciones existentes,
         copia sus preguntas y evita duplicar autoevaluaciones activas.
@@ -295,7 +296,10 @@ class EvaluacionRepository:
                     "La evaluación plantilla no tiene preguntas activas."
                 )
 
-            # 3. Obtener una sola carga por docente.
+            # 3. Obtener una sola carga por docente activo.
+            # Se prefiere la carga del periodo de la plantilla; si el
+            # docente no tiene una en ese periodo, se usa su carga activa
+            # más reciente, para no dejar docentes sin evaluación.
             cursor.execute("""
                 SELECT DISTINCT ON (cd.user_id)
                     cd.user_id,
@@ -303,9 +307,12 @@ class EvaluacionRepository:
                 FROM carga_docente cd
                 INNER JOIN usuarios u
                     ON u.usuario_id = cd.user_id
-                WHERE cd.periodo_id = %s
-                  AND u.estado = TRUE
-                ORDER BY cd.user_id, cd.carga_id;
+                WHERE u.estado = TRUE
+                  AND cd.estado = TRUE
+                ORDER BY cd.user_id,
+                         (cd.periodo_id = %s) DESC,
+                         cd.periodo_id DESC,
+                         cd.carga_id ASC;
             """, (periodo_id,))
 
             docentes = cursor.fetchall()
