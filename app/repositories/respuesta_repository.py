@@ -406,21 +406,55 @@ class RespuestaRepository:
                 SELECT pg_advisory_xact_lock(%s, %s);
             """, (usuario_id, evaluacion_id))
 
-            # Confirmar que la evaluación esté activa y asignada al usuario.
+            # Confirmar que la evaluación esté activa y que el usuario
+            # tenga derecho a responderla.
+            #
+            # Evaluación individual: debe estar vinculada directamente a
+            # una carga activa del usuario.
+            # Plantilla institucional [PLANTILLA]: el usuario debe tener
+            # una carga activa en el mismo periodo de la plantilla. Así no
+            # hace falta crear una evaluación individual para cada docente.
             cursor.execute("""
                 SELECT e.evaluacion_id
                 FROM evaluaciones e
-                JOIN carga_docente cd
-                    ON cd.carga_id = e.carga_id
+                LEFT JOIN carga_docente cd_plantilla
+                    ON cd_plantilla.carga_id = e.carga_id
                 WHERE e.evaluacion_id = %s
                   AND e.estado = TRUE
-                  AND cd.user_id = %s
+                  AND (
+                    (
+                      UPPER(COALESCE(e.tipo_evaluacion, '')) = 'AUTOEVALUACION'
+                      AND COALESCE(e.titulo, '') ILIKE '[PLANTILLA]%%'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM carga_docente cd
+                          WHERE cd.user_id = %s
+                            AND cd.estado = TRUE
+                            AND cd.periodo_id = COALESCE(
+                                e.periodo_id,
+                                cd_plantilla.periodo_id
+                            )
+                      )
+                    )
+                    OR
+                    (
+                      COALESCE(e.titulo, '') NOT ILIKE '[PLANTILLA]%%'
+                      AND EXISTS (
+                          SELECT 1
+                          FROM carga_docente cd
+                          WHERE cd.carga_id = e.carga_id
+                            AND cd.user_id = %s
+                            AND cd.estado = TRUE
+                      )
+                    )
+                  )
                 LIMIT 1;
-            """, (evaluacion_id, usuario_id))
+            """, (evaluacion_id, usuario_id, usuario_id))
 
             if cursor.fetchone() is None:
                 raise ValueError(
-                    "Esta evaluación no está asignada a tu carga docente."
+                    "La evaluación está inactiva o no está disponible "
+                    "para tu carga docente y periodo académico."
                 )
 
             # No permitir un segundo envío de la misma evaluación.
