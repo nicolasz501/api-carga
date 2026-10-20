@@ -1,4 +1,5 @@
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field
 from app.repositories.respuesta_repository import RespuestaRepository
 from app.api.usuarios import UsuarioActual, get_usuario_actual
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/respuestas",
@@ -60,6 +63,8 @@ def obtener_propietario(respuesta):
     if isinstance(respuesta, dict):
         return respuesta.get("usuario_id")
 
+    # SELECT de obtener_por_id devuelve las columnas en este orden:
+    # respuesta_id, pregunta_evaluacion_id, pregunta_id, usuario_id...
     return respuesta[3]
 
 
@@ -68,7 +73,7 @@ def crear_respuestas_lote(
     datos: RespuestasLote,
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
-    """Guarda las respuestas y el comentario del usuario autenticado."""
+    """Guarda un envío nuevo de respuestas del usuario autenticado."""
 
     usuario_id = usuario.usuario_id
 
@@ -103,18 +108,24 @@ def crear_respuestas_lote(
             detail=str(error),
         ) from error
 
-    except Exception:
+    except Exception as error:
+        logger.exception(
+            "Error en POST /respuestas/lote. Usuario=%s, evaluación=%s",
+            usuario_id,
+            datos.evaluacion_id,
+        )
+
         raise HTTPException(
             status_code=500,
-            detail="No se pudieron guardar las respuestas.",
-        )
+            detail="No se pudieron guardar las respuestas. Revisa los logs del servidor.",
+        ) from error
 
 
 @router.get("/")
 def listar_respuestas(
     usuario: UsuarioActual = Depends(get_usuario_actual),
 ):
-    """Los administradores ven todas las respuestas; cada usuario, las propias."""
+    """Los administradores ven todas las respuestas; los demás, las propias."""
 
     conn = None
 
@@ -170,11 +181,12 @@ def listar_respuestas(
         cursor.execute(consulta, parametros)
         return cursor.fetchall()
 
-    except Exception:
+    except Exception as error:
+        logger.exception("Error consultando respuestas")
         raise HTTPException(
             status_code=500,
             detail="No se pudieron consultar las respuestas.",
-        )
+        ) from error
 
     finally:
         if conn:
@@ -211,8 +223,12 @@ def obtener_respuesta(
     except HTTPException:
         raise
 
-    except Exception:
+    except Exception as error:
+        logger.exception(
+            "Error consultando respuesta %s",
+            respuesta_id,
+        )
         raise HTTPException(
             status_code=500,
             detail="No se pudo consultar la respuesta.",
-        )
+        ) from error
