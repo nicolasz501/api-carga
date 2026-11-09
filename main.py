@@ -20,8 +20,8 @@ from app.api import (
     preguntas,
     preguntas_evaluacion,
     respuestas,
+    reportes,
 )
-
 
 app = FastAPI(
     title="API Carga docente",
@@ -32,7 +32,6 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
 ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:5173",
     "http://localhost:4173",
@@ -40,7 +39,6 @@ ALLOWED_ORIGINS_DEFAULT = [
     "http://localhost:3000",
     "https://cargadocente.netlify.app",
 ]
-
 
 origins_env = os.getenv("ALLOWED_ORIGINS", "")
 
@@ -50,7 +48,6 @@ extra_origins = [
     if origin.strip()
 ]
 
-
 origins = list(
     dict.fromkeys(ALLOWED_ORIGINS_DEFAULT + extra_origins)
 )
@@ -59,12 +56,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_methods=[
+        "GET",
+        "POST",
+        "PUT",
+        "DELETE",
+        "PATCH",
+        "OPTIONS",
+    ],
     allow_headers=["*"],
 )
 
-
-
+# Registro de rutas
 app.include_router(roles.router)
 app.include_router(modulos.router)
 app.include_router(modulos_rol.router)
@@ -80,6 +83,10 @@ app.include_router(evaluaciones.router)
 app.include_router(preguntas.router)
 app.include_router(preguntas_evaluacion.router)
 app.include_router(respuestas.router)
+
+# Reportes
+app.include_router(reportes.router)
+
 
 @app.get("/", tags=["Health"])
 def estado_api():
